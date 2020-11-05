@@ -1,0 +1,16 @@
+version: '3'
+services:
+  oracle-async:
+    build:
+      context: .
+    environment:
+      TZ: America/Chicago
+      ORACLE_LOWERCASE: 'true'
+    depends_on:
+      - oracle
+  oracle:
+    image: wnameless/oracle-xe-11g-r2
+    logging:
+      driver: none
+    environment:
+      TZ: America/Los_Angeles
