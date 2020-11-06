@@ -99,11 +99,11 @@ const rows = await db.getall(`
 `, params)
 ```
 ## Raw Query
-If the convenience methods are hiding something you need from mssql, you can use .query() to get
-back whatever would have been returned by mssql.
+If the convenience methods are hiding something you need from oracle, you can use .query() to get
+back whatever would have been returned by oracle.
 ```javascript
 const result = await db.query('INSERT INTO mytable (name) VALUES (:name); UPDATE anothertable SET col1=:col1', { name: 'Mike', col1: 'Value' })
-const rowsUpdated = result.rowsUpdated[1]
+const rowsUpdated = result.rowsAffected
 ```
 ## IN helper
 Writing queries with `IN` operators can be a little complicated when using named parameters.
@@ -160,7 +160,7 @@ while (true) {
 ```
 As illustrated above, an iterator needs to be cleaned up when your code is aborted before reaching the end, or it will leak a connection. Remember to `await iterator.return()` if you are going to abandon the iterator, and inside try/catch/finally blocks in your row processing code. An SQL query error will show up on the first `await iterator.next()` and does not need to be cleaned up.
 ## Transactions
-A method is provided to support working inside a transaction. Since the core Db object is a mssql pool, you
+A method is provided to support working inside a transaction. Since the core Db object is an oracle pool, you
 cannot send transaction commands without this method, as each command would end up on a different connection.
 
 To start a transaction, provide a callback that MUST return a promise (just make it async). A new instance of
