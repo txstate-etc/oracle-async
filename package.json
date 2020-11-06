@@ -1,6 +1,6 @@
 {
   "name": "oracle-async",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A wrapper for oracle for added convenience when working with async/await and inside docker containers.",
   "main": "index.js",
   "types": "index.d.ts",

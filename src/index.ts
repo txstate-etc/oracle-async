@@ -212,15 +212,15 @@ export default class Db extends Queryable {
     super()
     let poolSizeString = process.env.ORACLE_POOL_SIZE ?? process.env.DB_POOL_SIZE ?? process.env.UV_THREADPOOL_SIZE
     if (process.env.UV_THREADPOOL_SIZE) poolSizeString = String(Math.min(parseInt(poolSizeString!), parseInt(process.env.UV_THREADPOOL_SIZE)))
-    const host = config?.server ?? process.env.MSSQL_HOST ?? process.env.DB_HOST ?? 'oracle'
-    const port = config?.port ?? parseInt(process.env.MSSQL_PORT ?? process.env.DB_PORT ?? '1521')
+    const host = config?.server ?? process.env.ORACLE_HOST ?? process.env.ORACLE_SERVER ?? process.env.DB_HOST ?? process.env.DB_SERVER ?? 'oracle'
+    const port = config?.port ?? parseInt(process.env.ORACLE_PORT ?? process.env.DB_PORT ?? '1521')
     const service = config?.service ?? process.env.ORACLE_SERVICE ?? process.env.DB_SERVICE ?? 'xe'
     this.pooloptions = {
       queueMax: 1000,
       ...config,
       connectString: `${host}:${port}/${service}`,
-      user: config?.user ?? process.env.MSSQL_USER ?? process.env.DB_USER ?? 'system',
-      password: config?.password ?? process.env.MSSQL_PASS ?? process.env.MSSQL_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle',
+      user: config?.user ?? process.env.ORACLE_USER ?? process.env.DB_USER ?? 'system',
+      password: config?.password ?? process.env.ORACLE_PASS ?? process.env.ORACLE_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle',
       ...(poolSizeString ? { poolMax: parseInt(poolSizeString) } : {})
     }
     this.queryOptions = {
