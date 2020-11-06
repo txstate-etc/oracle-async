@@ -89,15 +89,6 @@ const insertId = await db.insert('INSERT INTO mytable (name) VALUES (:name)', { 
 const rowsUpdated = await db.update('UPDATE mytable SET name=:newname WHERE name=:oldname', { newname: 'Johnny', oldname: 'John' })
 const success = await db.execute('CREATE TABLE anothertable ...')
 ```
-## Bound Parameter Arrays
-Named parameters are a little cumbersome with array operations, so we provide a helper:
-```javascript
-const params = { age: 30 }
-const rows = await db.getall(`
-  SELECT name FROM mytable
-  WHERE age > :age AND name IN (${db.in(params, ['John', 'Mike'])})
-`, params)
-```
 ## Raw Query
 If the convenience methods are hiding something you need from oracle, you can use .query() to get
 back whatever would have been returned by oracle.
