@@ -139,7 +139,7 @@ ${sql}`
       if (canceled) return
       (err as any).clientstack = err.stack
       err.stack = (stacktrace ?? '').replace(/^Error:/, `Error: ${err.message ?? ''}`)
-      stream.emit('error', err)
+      stream.destroy(err)
     })
     req.on('end', () => {
       if (canceled) return
@@ -161,13 +161,8 @@ ${sql}`
     const streamOptions = {
       highWaterMark: options?.highWaterMark
     }
-    const stream = new Readable({ ...streamOptions, objectMode: true }) as GenericReadable<ReturnType>
+    const stream = new Readable({ ...streamOptions, objectMode: true, autoDestroy: true }) as GenericReadable<ReturnType>
     stream._read = () => {}
-    stream._destroy = (err: Error, cb) => {
-      if (err) stream.emit('error', err)
-      stream.emit('close')
-      cb()
-    }
     const stacktraceError: { stack?: string } = {}
     Error.captureStackTrace(stacktraceError, this.handleStreamOptions)
     return { binds, queryOptions, stream, stacktrace: stacktraceError.stack }
@@ -274,11 +269,11 @@ export default class Db extends Queryable {
     const { binds, queryOptions, stream, stacktrace } = this.handleStreamOptions<ReturnType>(sql, bindsOrOptions, options)
     this.wait().then(async () => {
       const conn = await this.pool!.getConnection()
-      stream.on('end', () => { conn.close().catch(e => console.error(e)) })
-      stream.on('error', () => { conn.close().catch(e => console.error(e)) })
-      stream.on('close', () => { conn.close().catch(e => console.error(e)) })
       if (stream.destroyed) await conn.close()
-      this.feedStream(conn, stream, sql, binds, stacktrace, queryOptions)
+      else {
+        stream.on('close', () => { conn.close().catch(e => console.error(e)) })
+        this.feedStream(conn, stream, sql, binds, stacktrace, queryOptions)
+      }
     }).catch(e => stream.emit('error', e))
     return stream
   }
