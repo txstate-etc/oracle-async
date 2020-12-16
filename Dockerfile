@@ -1,4 +1,4 @@
-FROM registry.its.txstate.edu/node-oracle:base
+FROM registry.its.txstate.edu/node-oracle:qual
 WORKDIR /usr/app
 
 COPY package.json ./
