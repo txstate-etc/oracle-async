@@ -88,6 +88,20 @@ describe('basic tests', () => {
     expect(oldrow).to.be.undefined
   })
 
+  it('should properly release connections back to the pool when a query has a syntax error', async () => {
+    let errorthrown = false
+    for (let i = 0; i < 15; i++) {
+      try {
+        const rows = await db.getall('SELECT * FROM test3 WHERE rownum <= 100')
+      } catch (e) {
+        errorthrown = true
+      }
+    }
+    // if syntax errors eat connections then it will hang indefinitely after 10 transactions
+    // getting this far means things are working
+    expect(errorthrown).to.be.true
+  })
+
   it('should help you construct IN queries', async () => {
     const params = {}
     const rows = await db.getall(`SELECT * FROM test WHERE name IN (${db.in(params, ['name 2', 'name 5'])}) OR name IN (${db.in(params, ['name 8', 'name 9'])})`, params)

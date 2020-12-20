@@ -226,9 +226,11 @@ export default class Db extends Queryable {
   async query<ReturnType = DefaultReturnType> (sql: string, binds?: BindInput, options?: QueryOptions) {
     await this.wait()
     const conn = await this.pool!.getConnection()
-    const ret = await this.queryWithConn<ReturnType>(conn, sql, binds, { autoCommit: true })
+    try {
+      return await this.queryWithConn<ReturnType>(conn, sql, binds, { ...options, autoCommit: true })
+    } finally {
     await conn.close()
-    return ret
+    }
   }
 
   async connect () {
