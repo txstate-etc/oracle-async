@@ -25,6 +25,16 @@ describe('streaming tests', () => {
     expect(count).to.equal(1000)
   })
 
+  it('should be able to stream rows as arrays', async () => {
+    const stream = db.streamArray<[string]>('SELECT name FROM test')
+    let count = 0
+    for await (const row of stream) {
+      count++
+      expect(row?.[0]).to.match(/^name \d+/)
+    }
+    expect(count).to.equal(1000)
+  })
+
   it('should put an error on the stream if the query errors', async () => {
     const stream = db.stream('SELECT blah FROM test')
     try {

@@ -61,6 +61,12 @@ describe('basic tests', () => {
     expect(rows[0].name).to.be.a('string')
   })
 
+  it('should be able to select all rows as arrays', async () => {
+    const rows = await db.getallArray('SELECT name FROM test')
+    expect(rows?.length).to.equal(1000)
+    expect(rows[0][0]).to.be.a('string')
+  })
+
   it('should be able to select a single row', async () => {
     const row = await db.getrow<{ name: string }>('SELECT * FROM test WHERE name=:name', { name: 'name 3' })
     expect(row?.name).to.equal('name 3')

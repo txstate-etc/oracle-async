@@ -1,4 +1,4 @@
-import oracledb, { BindParameter, BindParameters, Connection, ExecuteOptions, Pool, PoolAttributes } from 'oracledb'
+import oracledb, { BindParameters, Connection, ExecuteOptions, Pool, PoolAttributes } from 'oracledb'
 import { Readable } from 'stream'
 
 export interface GlobalQueryOptions {
@@ -16,8 +16,13 @@ export interface QueryOptions extends GlobalQueryOptions {
   saveAsPrepared?: boolean
 }
 
+export interface InternalOptions extends QueryOptions, ExecuteOptions {
+  rowsAsArray?: boolean
+}
+
 export interface StreamOptions extends QueryOptions {
   highWaterMark?: number
+  rowsAsArray?: boolean
 }
 
 interface canBeStringed {
@@ -25,7 +30,7 @@ interface canBeStringed {
 }
 interface BindObject { [keys: string]: BindParam }
 type BindParam = number|string|null|Date|Buffer|canBeStringed|BindObject
-type ColTypes = BindParam
+type ColTypes = number|string|null|Date|Buffer
 interface DefaultReturnType { [keys: string]: ColTypes }
 type BindInput = BindParameters
 
@@ -39,19 +44,30 @@ interface GenericReadable<T> extends Readable {
   [Symbol.asyncIterator]: () => StreamIterator<T>
 }
 
-function lowerCaseRow <T> (row: T) {
-  return Object.fromEntries(
-    Object.entries(row).map(([k, v]) => [k.toLowerCase(), v])
-  ) as T
+function arrayToObject<ReturnType> (row: any[], colnames: string[]) {
+  const obj: Record<string, any> = {}
+  for (let i = 0; i < colnames.length; i++) {
+    obj[colnames[i]] = row[i]
+  }
+  return obj as ReturnType
 }
 
 export class Queryable {
   constructor (protected conn?: Connection, protected queryOptions?: GlobalQueryOptions) {
   }
 
-  async queryWithConn <ReturnType = DefaultReturnType> (conn: Connection, sql: string, binds?: BindInput, options?: ExecuteOptions) {
+  async queryWithConn <ReturnType = DefaultReturnType> (conn: Connection, sql: string, binds?: BindInput, options?: InternalOptions) {
     try {
-      return await conn.execute<ReturnType>(sql, binds ?? {}, { ...options, outFormat: oracledb.OUT_FORMAT_OBJECT })
+      const result = await conn.execute<ReturnType>(sql, binds ?? {}, { autoCommit: options?.autoCommit ?? true, outFormat: oracledb.OUT_FORMAT_ARRAY })
+      if (result.rows && result.metaData && !options?.rowsAsArray) {
+        const colnames = options?.lowerCaseColumns ?? this.queryOptions?.lowerCaseColumns
+          ? result.metaData.map(md => md.name.toLocaleLowerCase())
+          : result.metaData.map(md => md.name)
+        const ret: ReturnType[] = []
+        for (const row of result.rows as any[]) ret.push(arrayToObject(row, colnames))
+        result.rows = ret
+      }
+      return result
     } catch (e) {
       e.clientstack = e.stack
       e.stack = (new Error().stack ?? '')
@@ -62,19 +78,19 @@ ${sql}`
     }
   }
 
-  async query<ReturnType = DefaultReturnType> (sql: string, binds?: BindInput, options?: QueryOptions) {
+  async query<ReturnType = DefaultReturnType> (sql: string, binds?: BindInput, options?: InternalOptions) {
     if (!this.conn) throw new Error('Queryable was not given a connection. Query method must be overridden in subclass.')
-    return await this.queryWithConn<ReturnType>(this.conn, sql, binds, { autoCommit: false })
+    return await this.queryWithConn<ReturnType>(this.conn, sql, binds, { ...options, autoCommit: false })
   }
 
   async getval<ReturnType = ColTypes> (sql: string, binds?: BindInput, options?: QueryOptions) {
-    const row = await this.getrow<[ReturnType]>(sql, binds, options)
-    if (row) return Object.values(row)[0]
+    const result = await this.query<[ReturnType]>(sql, binds, { ...options, rowsAsArray: true })
+    return result.rows?.[0]?.[0]
   }
 
   async getvals<ReturnType = ColTypes> (sql: string, binds?: BindInput, options?: QueryOptions) {
-    const rows = await this.getall<[ReturnType]>(sql, binds, options)
-    return rows.map(r => Object.values(r)[0])
+    const result = await this.query<[ReturnType]>(sql, binds, { ...options, rowsAsArray: true })
+    return result.rows?.map(r => r[0]) ?? []
   }
 
   async getrow<ReturnType = DefaultReturnType> (sql: string, binds?: BindInput, options?: QueryOptions) {
@@ -84,9 +100,11 @@ ${sql}`
 
   async getall<ReturnType = DefaultReturnType> (sql: string, binds?: BindInput, options?: QueryOptions) {
     const results = await this.query<ReturnType>(sql, binds, options)
-    if (options?.lowerCaseColumns ?? this.queryOptions?.lowerCaseColumns) {
-      return (results.rows ?? []).map(r => lowerCaseRow(r))
-    }
+    return results.rows ?? [] as ReturnType[]
+  }
+
+  async getallArray<ReturnType = ColTypes[]> (sql: string, binds?: BindInput, options?: QueryOptions) {
+    const results = await this.query<ReturnType>(sql, binds, { ...options, rowsAsArray: true })
     return results.rows ?? [] as ReturnType[]
   }
 
@@ -113,36 +131,39 @@ ${sql}`
     return insertid?.[0] ?? 0
   }
 
-  protected feedStream<ReturnType> (conn: Connection, stream: GenericReadable<ReturnType>, sql: string, binds: BindInput, stacktrace: string|undefined, options: QueryOptions = {}) {
-    if (stream.destroyed) return
+  protected feedStream<ReturnType> (conn: Connection, stream: GenericReadable<ReturnType>, sql: string, binds: BindInput, stacktrace: string|undefined, options: StreamOptions = {}) {
+    const req = conn.queryStream(sql, binds, { outFormat: oracledb.OUT_FORMAT_ARRAY })
 
-    const req = conn.queryStream(sql, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT })
-
-    let canceled = false
     stream._read = () => {
       req.resume()
     }
     stream._destroy = (err: Error, cb) => {
       if (err) stream.emit('error', err)
-      canceled = true
-      req.resume()
+      req.destroy()
       cb()
     }
-    req.on('data', row => {
-      if (options?.lowerCaseColumns ?? this.queryOptions?.lowerCaseColumns) row = lowerCaseRow(row)
-      if (canceled) return
-      if (!stream.push(row)) {
-        req.pause()
-      }
-    })
+    if (!options.rowsAsArray) {
+      let colnames: string[] = []
+      req.on('metadata', (metadata: oracledb.Metadata<ReturnType>[]) => {
+        colnames = options?.lowerCaseColumns ?? this.queryOptions?.lowerCaseColumns
+          ? metadata.map(md => md.name.toLocaleLowerCase())
+          : metadata.map(md => md.name)
+      })
+      req.on('data', row => {
+        if (!stream.push(arrayToObject<ReturnType>(row, colnames))) req.pause()
+      })
+    } else {
+      req.on('data', row => {
+        if (!stream.push(row)) req.pause()
+      })
+    }
+    req.on('metadata', (metadata: oracledb.Metadata<ReturnType>[]) => stream.emit('metadata', metadata))
     req.on('error', (err) => {
-      if (canceled) return
       (err as any).clientstack = err.stack
       err.stack = (stacktrace ?? '').replace(/^Error:/, `Error: ${err.message ?? ''}`)
       stream.destroy(err)
     })
     req.on('end', () => {
-      if (canceled) return
       stream.push(null)
     })
   }
@@ -156,7 +177,8 @@ ${sql}`
       binds = bindsOrOptions
     }
     const queryOptions = {
-      saveAsPrepared: options?.saveAsPrepared
+      saveAsPrepared: options?.saveAsPrepared,
+      rowsAsArray: options?.rowsAsArray
     }
     const streamOptions = {
       highWaterMark: options?.highWaterMark
@@ -174,6 +196,12 @@ ${sql}`
     const { binds, queryOptions, stream, stacktrace } = this.handleStreamOptions<ReturnType>(sql, bindsOrOptions, options)
     this.feedStream(this.conn!, stream, sql, binds, stacktrace, queryOptions)
     return stream
+  }
+
+  streamArray<ReturnType = ColTypes[]> (sql: string, options: StreamOptions): GenericReadable<ReturnType>
+  streamArray<ReturnType = ColTypes[]> (sql: string, binds?: BindInput, options?: StreamOptions): GenericReadable<ReturnType>
+  streamArray<ReturnType = ColTypes[]> (sql: string, bindsOrOptions: any, options?: StreamOptions) {
+    return this.stream<ReturnType>(sql, bindsOrOptions, { ...options, rowsAsArray: true })
   }
 
   iterator<ReturnType = DefaultReturnType> (sql: string, options: StreamOptions): StreamIterator<DefaultReturnType>
@@ -212,8 +240,8 @@ export default class Db extends Queryable {
     const service = config?.service ?? process.env.ORACLE_SERVICE ?? process.env.DB_SERVICE ?? 'xe'
     this.pooloptions = {
       queueMax: 1000,
-      ...config,
       connectString: `${host}:${port}/${service}`,
+      ...config,
       user: config?.user ?? process.env.ORACLE_USER ?? process.env.DB_USER ?? 'system',
       password: config?.password ?? process.env.ORACLE_PASS ?? process.env.ORACLE_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle',
       ...(poolSizeString ? { poolMax: parseInt(poolSizeString) } : {})
@@ -223,13 +251,17 @@ export default class Db extends Queryable {
     }
   }
 
+  setQueryOptions (opts: GlobalQueryOptions) {
+    this.queryOptions = { ...this.queryOptions, ...opts }
+  }
+
   async query<ReturnType = DefaultReturnType> (sql: string, binds?: BindInput, options?: QueryOptions) {
     await this.wait()
     const conn = await this.pool!.getConnection()
     try {
       return await this.queryWithConn<ReturnType>(conn, sql, binds, { ...options, autoCommit: true })
     } finally {
-    await conn.close()
+      await conn.close()
     }
   }
 

@@ -16,8 +16,13 @@ be imported all over your code.
 ```javascript
 import Db from 'oracle-async'
 export const db = new Db({
+  // you may provide connectString as in oracledb, or you may provide these elements:
   server: 'yourhost',
-  ...
+  port: 1521,
+  service: 'xe',
+  // row objects will have lowercase keys instead of uppercase
+  lowerCaseColumns: true
+  ... // the rest of the options match oracledb library
 })
 
 async function main() {
@@ -34,14 +39,16 @@ environment variables:
   ORACLE_DATABASE (default 'default_database')
   ORACLE_USER (default 'sa')
   ORACLE_PASS
+
   UV_THREADPOOL_SIZE (default 4)
-  # this controls both the number of threads oracle client starts up with and max connections
-  # in the pool, which should match unless you have mutliple pools
-  # in that case, you should set ORACLE_POOL_SIZE to something smaller, and then make sure your
+  # This controls both the number of threads oracle client starts up with and max connections
+  # in the pool, which should match unless you have multiple pools/database servers.
+  # In that case, you should set ORACLE_POOL_SIZE to something smaller, and then make sure your
   # pools' max connections all add up to UV_THREADPOOL_SIZE or less
+
   ORACLE_LOWERCASE
-  # if this is truthy, row objects will have lowercase keys instead of uppercase, just a quality
-  # of life thing
+  # If this is truthy, row objects will have lowercase keys instead of uppercase, just a quality
+  # of life thing. You can also set this as a default at runtime with `db.setQueryOptions({ lowerCaseColumns: true })`
 ```
 This way, connecting is very simple, and you don't have to worry about creating a singleton pool for the
 rest of your codebase to import:
@@ -77,6 +84,9 @@ console.log(name) // John
 const names = await db.getvals('SELECT name FROM mytable WHERE name IN (:name1, :name2)',
   { name1: 'John', name2: 'Maria' })
 console.log(names) // ['John', 'Maria']
+const rows = await db.getallArray('SELECT name FROM mytable')
+// returns rows as array instead of object, improves performance on huge datasets
+console.log(rows) // [['John'],['Maria']]
 ```
 ## Mutating
 ```javascript
@@ -150,6 +160,20 @@ while (true) {
 }
 ```
 As illustrated above, an iterator needs to be cleaned up when your code is aborted before reaching the end, or it will leak a connection. Remember to `await iterator.return()` if you are going to abandon the iterator, and inside try/catch/finally blocks in your row processing code. An SQL query error will show up on the first `await iterator.next()` and does not need to be cleaned up.
+### streamArray
+For very large datasets, you may want to avoid the work of converting rows to objects. You can use `.streamArray()` instead of `.stream()` to do so. Also see `.getallArray()` above.
+
+You can access the column names by listening to the `metadata` event:
+```javascript
+const stream = db.streamArray('SELECT name FROM mytable')
+let colnames = []
+stream.on('metadata', metadata => {
+  colnames = metadata.map(md => md.name)
+})
+for await (const row of stream) {
+  // work on row
+}
+```
 ## Transactions
 A method is provided to support working inside a transaction. Since the core Db object is an oracle pool, you
 cannot send transaction commands without this method, as each command would end up on a different connection.
