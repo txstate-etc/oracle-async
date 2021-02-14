@@ -35,24 +35,25 @@ describe('basic tests', () => {
   })
 
   it('should be able to add test data', async () => {
-    const promises = []
-    for (let i = 0; i < 1000; i++) {
-      promises.push(db.insert('INSERT INTO test (name, modified) VALUES (:name, CURRENT_TIMESTAMP)', { name: `name ${i}` }, { insertId: 'id' }))
-    }
-    const ids = await Promise.all(promises)
-    expect(ids?.length).to.equal(1000)
-    expect(ids[0]).to.be.a('number')
-    expect(ids[5]).to.be.greaterThan(0)
+    const thousand = Array.from(Array(1000))
+    const values = `
+    WITH insertrows AS (
+      ${thousand.map((_, i) => `SELECT 'name ${i}', CURRENT_TIMESTAMP from dual`).join(' union all\n')}
+    )
+    SELECT * FROM insertrows
+    `
+    await db.insert(`INSERT INTO test (name, modified) ${values}`, {})
   })
 
   it('should be able to add more test data', async () => {
-    const promises = []
-    for (let i = 0; i < 1000; i++) {
-      promises.push(db.insert('INSERT INTO test2 (name, modified) VALUES (:name, CURRENT_TIMESTAMP)', { name: `name ${i}` }, { insertId: 'id' }))
-    }
-    const ids = await Promise.all(promises)
-    expect(ids?.length).to.equal(1000)
-    expect(ids[0]).to.be.a('number')
+    const thousand = Array.from(Array(1000))
+    const values = `
+    WITH insertrows AS (
+      ${thousand.map((_, i) => `SELECT 'name ${i}', CURRENT_TIMESTAMP from dual`).join(' union all\n')}
+    )
+    SELECT * FROM insertrows
+    `
+    await db.insert(`INSERT INTO test2 (name, modified) ${values}`, {})
   })
 
   it('should be able to select all rows', async () => {
@@ -114,13 +115,37 @@ describe('basic tests', () => {
     expect(rows).to.have.lengthOf(4)
   })
 
+  it('should help you construct IN queries when params is an array', async () => {
+    const params: any[] = []
+    const rows = await db.getall(`SELECT * FROM test WHERE name IN (${db.in(params, ['name 2', 'name 5'])}) OR name IN (${db.in(params, ['name 8', 'name 9'])})`, params)
+    expect(rows).to.have.lengthOf(4)
+  })
+
+  it('should help you construct IN queries involving tuples', async () => {
+    let params: any[] = []
+    let rows = await db.getall(`SELECT * FROM test WHERE (id, name) IN (${db.in(params, [[3, 'name 2'], [6, 'name 5']])}) OR (id, name) IN (${db.in(params, [[9, 'name 8'], [10, 'name 9']])})`, params)
+    expect(rows).to.have.lengthOf(4)
+    params = []
+    rows = await db.getall(`SELECT * FROM test WHERE (id, name) IN (${db.in(params, [[4, 'name 2'], [6, 'name 5']])}) OR (id, name) IN (${db.in(params, [[9, 'name 8'], [10, 'name 9']])})`, params)
+    expect(rows).to.have.lengthOf(3)
+  })
+
+  it('should help you construct IN queries with named parameters involving tuples', async () => {
+    let params: { [keys: string]: string } = {}
+    let rows = await db.getall(`SELECT * FROM test WHERE (id, name) IN (${db.in(params, [[3, 'name 2'], [6, 'name 5']])}) OR (id, name) IN (${db.in(params, [[9, 'name 8'], [10, 'name 9']])})`, params)
+    expect(rows).to.have.lengthOf(4)
+    params = {}
+    rows = await db.getall(`SELECT * FROM test WHERE (id, name) IN (${db.in(params, [[4, 'name 2'], [6, 'name 5']])}) OR (id, name) IN (${db.in(params, [[9, 'name 8'], [10, 'name 9']])})`, params)
+    expect(rows).to.have.lengthOf(3)
+  })
+
   it('should show the library consumer in the error stacktrace when a query errors', async () => {
     try {
       await db.getval('SELECT blah FROM test')
       expect(true).to.be.false('should have thrown for SQL error')
     } catch (e) {
-      // TODO requires node 14
-      // expect(e.stack).to.match(/01\.basic\.ts/)
+      // NOTE: requires node 14
+      expect(e.stack).to.match(/01\.basic\.ts/)
     }
   })
 })

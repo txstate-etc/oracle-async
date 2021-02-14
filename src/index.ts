@@ -212,17 +212,34 @@ ${sql}`
   }
 
   in (binds: BindInput, newbinds: BindParam[]) {
-    let startindex = 0
+    const inElements: string[] = []
     if (Array.isArray(binds)) {
-      startindex = binds.length
-      binds.push(...newbinds as any[])
+      for (const bind of newbinds) {
+        if (Array.isArray(bind)) { // tuple
+          inElements.push(`(${bind.map(() => `:${binds.length}`).join(',')})`)
+          binds.push(...bind)
+        } else { // normal
+          inElements.push(`:${binds.length}`)
+          binds.push(bind as any)
+        }
+      }
     } else {
-      startindex = Object.keys(binds).length
-      for (let i = 0; i < newbinds.length; i++) {
-        binds[String(i + startindex)] = newbinds[i]?.toString ? newbinds[i]?.toString() : newbinds[i] as Exclude<BindParam, canBeStringed>
+      let startindex = Object.keys(binds).length
+      for (const bind of newbinds) {
+        if (Array.isArray(bind)) { // tuple
+          inElements.push(`(${bind.map((str, i) => `:${i + startindex}`).join(',')})`)
+          for (let i = 0; i < bind.length; i++) {
+            binds[`${i + startindex}`] = bind[i]
+          }
+          startindex += bind.length
+        } else { // normal
+          inElements.push(`:${startindex}`)
+          binds[`${startindex}`] = bind as any
+          startindex++
+        }
       }
     }
-    return Array.from({ length: newbinds.length }, (v, k) => k + startindex).map(n => `:${n}`).join(',')
+    return inElements.join(',')
   }
 }
 
