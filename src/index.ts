@@ -216,7 +216,7 @@ ${sql}`
     if (Array.isArray(binds)) {
       for (const bind of newbinds) {
         if (Array.isArray(bind)) { // tuple
-          inElements.push(`(${bind.map(() => `:${binds.length}`).join(',')})`)
+          inElements.push(`(${bind.map((b, i) => `:${binds.length + i}`).join(',')})`)
           binds.push(...bind)
         } else { // normal
           inElements.push(`:${binds.length}`)
