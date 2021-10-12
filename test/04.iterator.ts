@@ -23,7 +23,7 @@ describe('iterator tests', () => {
     try {
       await iter.next()
       expect(true).to.be.false('next() should have errored')
-    } catch (e) {
+    } catch (e: any) {
       expect(e.errorNum).to.be.greaterThan(0)
     }
   })

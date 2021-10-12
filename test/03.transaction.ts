@@ -43,7 +43,7 @@ describe('transaction tests', () => {
         expect(row?.name).to.equal('name 2001')
         throw new Error('Fail!')
       })
-    } catch (e) {
+    } catch (e: any) {
       expect(e.message).to.equal('Fail!')
     }
     const row = await db.getrow('SELECT * FROM test WHERE id=:id', { id })
@@ -58,7 +58,7 @@ describe('transaction tests', () => {
         expect(id).to.be.greaterThan(0)
         await db.getrow('SELECT * FROM test WHERE blah id=:id', { id })
       })
-    } catch (e) {
+    } catch (e: any) {
       expect(e.message).to.match(/(invalid.sql.statement|illegal.variable.name)/i)
     }
     const row = await db.getrow('SELECT * FROM test WHERE id=:id', { id })
@@ -85,7 +85,7 @@ describe('transaction tests', () => {
           expect(row?.name).to.equal(`name ${i}`)
           throw new Error('Fail!')
         })
-      } catch (e) {
+      } catch (e: any) {
         expect(e.message).to.equal('Fail!')
       }
     }
@@ -107,7 +107,7 @@ describe('transaction tests', () => {
         await db.getval('SELECT blah FROM test')
       })
       expect(true).to.be.false('should have thrown for SQL error')
-    } catch (e) {
+    } catch (e: any) {
       // TODO requires node 14
       // expect(e.stack).to.match(/03\.transaction\.ts/)
     }

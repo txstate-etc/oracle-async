@@ -143,7 +143,7 @@ describe('basic tests', () => {
     try {
       await db.getval('SELECT blah FROM test')
       expect(true).to.be.false('should have thrown for SQL error')
-    } catch (e) {
+    } catch (e: any) {
       // NOTE: requires node 14
       expect(e.stack).to.match(/01\.basic\.ts/)
     }

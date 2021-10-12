@@ -68,7 +68,7 @@ export class Queryable {
         result.rows = ret
       }
       return result
-    } catch (e) {
+    } catch (e: any) {
       e.clientstack = e.stack
       e.stack = (new Error().stack ?? '')
       Error.captureStackTrace(e, this.queryWithConn)
@@ -289,8 +289,8 @@ export default class Db extends Queryable {
         this.pool = await oracledb.createPool(this.pooloptions)
         await this.pool.getConnection()
         return
-      } catch (error) {
-        if (errorcount > 2) console.error(error.message)
+      } catch (e: any) {
+        if (errorcount > 2) console.error(e.message)
         errorcount++
         // sleep and try again
         if (errorcount > 1) console.log('Unable to connect to Oracle database, trying again in 2 seconds.')
@@ -338,7 +338,7 @@ export default class Db extends Queryable {
       await transaction.commit()
       await transaction.close()
       return ret
-    } catch (e) {
+    } catch (e: any) {
       if (e.errorNum === 60 && options?.retries) { // deadlock
         await transaction.close()
         return await this.transaction(callback, { ...options, retries: options.retries - 1 })
