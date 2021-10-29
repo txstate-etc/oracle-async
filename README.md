@@ -35,7 +35,7 @@ When working in docker, it's common to keep database configuration in environmen
 make that easy, this library provides a convenient way to import a singleton pool created with the following
 environment variables:
 ```
-  ORACLE_HOST (default 'mssql')
+  ORACLE_HOST (default 'oracle')
   ORACLE_DATABASE (default 'default_database')
   ORACLE_USER (default 'sa')
   ORACLE_PASS
