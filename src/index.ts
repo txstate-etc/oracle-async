@@ -5,15 +5,31 @@ export interface GlobalQueryOptions {
   lowerCaseColumns?: boolean
 }
 
+export type PoolStatus = 'up'|'down'|'readonly'
+
 export interface PoolOptions extends PoolAttributes, GlobalQueryOptions {
   server?: string
   port?: string|number
   service?: string
+  connectTimeout?: number
+  onStatus: (status: PoolStatus) => void|Promise<void>
+  replicas?: {
+    failoverOnly?: boolean
+    server?: string
+    port?: string|number
+    service?: string
+    connectString?: string
+    user?: string
+    password?: string
+  }[]
 }
 
 export interface QueryOptions extends GlobalQueryOptions {
   /* currently does nothing */
   saveAsPrepared?: boolean
+
+  /* this query should not be sent to a replica server, default false for reads, true for writes */
+  mainServer?: boolean
 }
 
 export interface InternalOptions extends QueryOptions, ExecuteOptions {
@@ -109,12 +125,12 @@ ${sql}`
   }
 
   async execute (sql: string, binds?: BindInput, options?: QueryOptions) {
-    await this.query(sql, binds, options)
+    await this.query(sql, binds, { ...options, mainServer: true })
     return true
   }
 
   async update (sql: string, binds?: BindInput, options?: QueryOptions) {
-    const result = await this.query(sql, binds, options)
+    const result = await this.query(sql, binds, { ...options, mainServer: true })
     return result.rowsAffected
   }
 
@@ -126,7 +142,7 @@ ${sql}`
       if (Array.isArray(binds)) binds.push(outbind)
       else binds.insertid = outbind
     }
-    const result = await this.query(sql, binds, options)
+    const result = await this.query(sql, binds, { ...options, mainServer: true })
     const insertid = Array.isArray(result?.outBinds) ? result.outBinds[result.outBinds.length - 1] : result?.outBinds?.insertid
     return insertid?.[0] ?? 0
   }
@@ -247,9 +263,16 @@ export default class Db extends Queryable {
   protected pool?: Pool
   protected pooloptions: PoolAttributes
   protected connectpromise!: Promise<void>
+  public status: PoolStatus
+  protected onStatus?: (status: PoolStatus) => void|Promise<void>
+  protected replica: Pool[]
+  protected replicaOptions: PoolAttributes[]
+  protected recoveryTimer?: NodeJS.Timeout
 
   constructor (config?: Partial<PoolOptions>) {
     super()
+    this.status = 'up'
+    this.onStatus = config?.onStatus
     let poolSizeString = process.env.ORACLE_POOL_SIZE ?? process.env.DB_POOL_SIZE ?? process.env.UV_THREADPOOL_SIZE
     if (process.env.UV_THREADPOOL_SIZE) poolSizeString = String(Math.min(parseInt(poolSizeString!), parseInt(process.env.UV_THREADPOOL_SIZE)))
     const host = config?.server ?? process.env.ORACLE_HOST ?? process.env.ORACLE_SERVER ?? process.env.DB_HOST ?? process.env.DB_SERVER ?? 'oracle'
@@ -257,7 +280,7 @@ export default class Db extends Queryable {
     const service = config?.service ?? process.env.ORACLE_SERVICE ?? process.env.DB_SERVICE ?? 'xe'
     this.pooloptions = {
       queueMax: 1000,
-      connectString: `${host}:${port}/${service}`,
+      connectString: `${host}:${port}/${service}?connect_timeout=${config?.connectTimeout ?? process.env.MSSQL_CONNECT_TIMEOUT ?? 15}`,
       ...config,
       user: config?.user ?? process.env.ORACLE_USER ?? process.env.DB_USER ?? 'system',
       password: config?.password ?? process.env.ORACLE_PASS ?? process.env.ORACLE_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle',
@@ -266,15 +289,89 @@ export default class Db extends Queryable {
     this.queryOptions = {
       lowerCaseColumns: config?.lowerCaseColumns ?? !!process.env.ORACLE_LOWERCASE
     }
+    this.replica = []
+    this.replicaOptions = []
+    if (config?.replicas?.length) {
+      for (const replica of config?.replicas) {
+        this.replicaOptions.push({
+          ...this.pooloptions,
+          ...(replica.user ? { user: replica.user } : {}),
+          ...(replica.password ? { password: replica.password } : {}),
+          connectString: replica.connectString ?? `${replica.server ?? host}:${replica.port ?? port}/${replica.service ?? service}?connect_timeout=5`
+        })
+      }
+    } else if (process.env.ORACLE_REPLICA_HOST) {
+      this.replicaOptions.push({
+        ...this.pooloptions,
+        ...(process.env.ORACLE_REPLICA_USER ? { user: process.env.ORACLE_REPLICA_USER } : {}),
+        ...(process.env.ORACLE_REPLICA_PASS ? { password: process.env.ORACLE_REPLICA_PASS } : {}),
+        connectString: `${process.env.ORACLE_REPLICA_HOST ?? host}:${process.env.ORACLE_REPLICA_PORT ?? port}/${process.env.ORACLE_REPLICA_SERVICE ?? service}?connect_timeout=5`
+      })
+    }
   }
 
   setQueryOptions (opts: GlobalQueryOptions) {
     this.queryOptions = { ...this.queryOptions, ...opts }
   }
 
+  private setStatus (status: PoolStatus) {
+    if (this.status !== status) {
+      this.status = status
+      if (this.recoveryTimer) clearInterval(this.recoveryTimer)
+      if (status !== 'up') {
+        this.recoveryTimer = setInterval(() => { this.detectRecovery().catch(e => {}) }, 60000)
+      }
+      this.onStatus?.(status)?.catch(console.error)
+    }
+  }
+
+  private async detectRecovery () {
+    const conn = await this.pool!.getConnection()
+    // if the above line didn't throw, we're back online
+    this.setStatus('up')
+    await conn.close()
+  }
+
+  private async getReplicaConnection () {
+    for (let i = 0; i < this.replicaOptions.length; i++) {
+      try {
+        this.replica[i] ??= await oracledb.createPool(this.replicaOptions[i])
+        const conn = await this.replica[i].getConnection()
+        try {
+          this.setStatus('readonly')
+        } catch (e: any) {
+          // ignore
+        }
+        return conn
+      } catch (e: any) {
+        // try again
+      }
+    }
+    this.setStatus('down')
+    throw new Error('Connection to replica database could not be established.')
+  }
+
+  private async getConnection (mainServer: boolean|undefined) {
+    if (!mainServer && this.status !== 'up' && this.replica.length) {
+      return await this.getReplicaConnection()
+    } else {
+      try {
+        const conn = await this.pool!.getConnection()
+        this.status = 'up'
+        return conn
+      } catch (e: any) {
+        if (this.replicaOptions.length) {
+          this.setStatus('readonly')
+          if (!mainServer) return await this.getReplicaConnection()
+        }
+        throw e
+      }
+    }
+  }
+
   async query<ReturnType = DefaultReturnType> (sql: string, binds?: BindInput, options?: QueryOptions) {
     await this.wait()
-    const conn = await this.pool!.getConnection()
+    const conn = await this.getConnection(options?.mainServer)
     try {
       return await this.queryWithConn<ReturnType>(conn, sql, binds, { ...options, autoCommit: true })
     } finally {
@@ -284,16 +381,22 @@ export default class Db extends Queryable {
 
   async connect () {
     let errorcount = 0
+    let mainServer = true
     while (true) {
       try {
         this.pool = await oracledb.createPool(this.pooloptions)
-        await this.pool.getConnection()
+        const conn = await this.getConnection(mainServer)
+        await conn.close()
         return
       } catch (e: any) {
         if (errorcount > 2) console.error(e.message)
         errorcount++
         // sleep and try again
-        if (errorcount > 1) console.log('Unable to connect to Oracle database, trying again in 2 seconds.')
+        if (errorcount > 1) console.info('Unable to connect to Oracle database, trying again in 2 seconds.')
+        if (errorcount > 30 && this.replicaOptions.length) {
+          console.info('Unable to connect to Oracle database for over a minute. Failing over to replica(s).')
+          mainServer = false
+        }
         await new Promise(resolve => setTimeout(resolve, 2000))
       }
     }
@@ -319,7 +422,7 @@ export default class Db extends Queryable {
   stream<ReturnType = DefaultReturnType> (sql: string, bindsOrOptions: any, options?: StreamOptions) {
     const { binds, queryOptions, stream, stacktrace } = this.handleStreamOptions<ReturnType>(sql, bindsOrOptions, options)
     this.wait().then(async () => {
-      const conn = await this.pool!.getConnection()
+      const conn = await this.getConnection(options?.mainServer)
       if (stream.destroyed) await conn.close()
       else {
         stream.on('close', () => { conn.close().catch(e => console.error(e)) })
@@ -331,7 +434,7 @@ export default class Db extends Queryable {
 
   async transaction <ReturnType> (callback: (db: Queryable) => Promise<ReturnType>, options?: { retries?: number }): Promise<ReturnType> {
     await this.wait()
-    const transaction = await this.pool!.getConnection()
+    const transaction = await this.getConnection(true)
     const db = new Queryable(transaction, this.queryOptions)
     try {
       const ret = await callback(db)
@@ -339,7 +442,7 @@ export default class Db extends Queryable {
       await transaction.close()
       return ret
     } catch (e: any) {
-      if (e.errorNum === 60 && options?.retries) { // deadlock
+      if (e.errorNum === 60 && options?.retries && options.retries > 0) { // deadlock
         await transaction.close()
         return await this.transaction(callback, { ...options, retries: options.retries - 1 })
       } else {
