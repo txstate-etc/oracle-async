@@ -12,7 +12,7 @@ export interface GlobalQueryOptions {
  * A place to put SQL options specific to the DML queries we want to execute.
  * Currently used to control behavior that is custom to this library. */
 export interface QueryOptions extends GlobalQueryOptions {
-  /** Currently does nothing. */
+  /** Option to save the prepared statement for reuse. Not currently implemented. See `Db.rawpool()` for custom pool handling. */
   saveAsPrepared?: boolean
 
   /** This query should not be sent to a replica server, default false for reads, true for writes. */
@@ -47,7 +47,7 @@ export interface StreamOptions extends QueryOptions {
  * ``` */
 export type PoolStatus = 'up'|'down'|'readonly'
 /** On discussion of adding additional states for indicating status while awaiting a confirmed up or readonly connection we decided that keeping it simple
- * was desireable to prevent over complicating state handling and encumbering the PoosStatus setting and handling with ultimately unnessary checks. */
+ * was desireable to prevent over complicating state handling and encumbering the PoolStatus setting with ultimately unnessary checks. */
 
 /**
  * A custom extension of the oracledb.PoolAttributes interface used for specifying non-default oracledb.pool configuration properties and custom configuration
@@ -447,7 +447,8 @@ export default class Db extends Queryable {
     const host = config?.server ?? process.env.ORACLE_HOST ?? process.env.ORACLE_SERVER ?? process.env.DB_HOST ?? process.env.DB_SERVER ?? 'oracle'
     const port = config?.port ?? parseInt(process.env.ORACLE_PORT ?? process.env.DB_PORT ?? '1521')
     const service = config?.service ?? process.env.ORACLE_SERVICE ?? process.env.DB_SERVICE ?? 'xe'
-    const easyConnectString = `${host}:${port}/${service}?connect_timeout=${config?.connectTimeout ?? process.env.MSSQL_CONNECT_TIMEOUT ?? 15}`
+    const primaryTimeout = `${config?.connectTimeout ?? process.env.MSSQL_CONNECT_TIMEOUT ?? 15}`
+    const easyConnectString = `${host}:${port}/${service}?connect_timeout=${primaryTimeout}`
     const connectString = config?.connectString ?? process.env.ORACLE_CONNECT_STRING ?? easyConnectString
     this.poolAttributes = {
       queueMax: 1000,
@@ -470,7 +471,8 @@ export default class Db extends Queryable {
     // If optional replicas are passed in the config push them onto the standardized replicaAttributes array.
     if (config?.replicas?.length) {
       for (const replica of config?.replicas) {
-        const easyConnectString = `${replica.server ?? host}:${replica.port ?? port}/${replica.service ?? service}?connect_timeout=5`
+        const timeout = `connect_timeout=${replica.connectTimeout ?? primaryTimeout}`
+        const easyConnectString = `${replica.server ?? host}:${replica.port ?? port}/${replica.service ?? service}?${timeout}`
         const connectString = replica.connectString ?? easyConnectString
         this.replicaAttributes.push({
           ...this.poolAttributes,
@@ -484,14 +486,15 @@ export default class Db extends Queryable {
           }
         })
       }
-    } else if (process.env.ORACLE_REPLICA_SERVICE) {
-      const easyConnectString = `${process.env.ORACLE_REPLICA_HOST ?? host}:${process.env.ORACLE_REPLICA_PORT ?? port}/${process.env.ORACLE_REPLICA_SERVICE ?? service}?connect_timeout=5`
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+    } else if (process.env.ORACLE_REPLICA_SERVICE || process.env.ORACLE_REPLICA_CONNECT_STRING) {
+      const timeout = `connect_timeout=${primaryTimeout}`
+      const easyConnectString = `${process.env.ORACLE_REPLICA_HOST ?? host}:${process.env.ORACLE_REPLICA_PORT ?? port}/${process.env.ORACLE_REPLICA_SERVICE ?? service}?${timeout}`
       const connectString = process.env.ORACLE_REPLICA_CONNECT_STRING ?? easyConnectString
       const passwd = process.env.ORACLE_REPLICA_PASS ?? process.env.ORACLE_REPLICA_PASSWORD
       this.replicaAttributes.push({
         ...this.poolAttributes,
         ...(process.env.ORACLE_REPLICA_USER ? { user: process.env.ORACLE_REPLICA_USER } : {}),
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         ...(passwd ? { password: passwd } : {}),
         connectString: connectString,
         sessionCallback: (connection, requestedTag, cb) => {
