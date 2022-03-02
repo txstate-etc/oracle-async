@@ -25,7 +25,7 @@ export const db = new Db({
   server: 'yourhost',
   port: 1521,
   service: 'xe',
-  user: 'test-api' // Also configurable via environment variable.
+  user: 'test-api', // Also configurable via environment variable.
   password: 'somestrongpassword', // Also configurable via environment variable.
   // lowerCaseColumns determines if row objects will be converted to lowercase keys.
   lowerCaseColumns: true,
