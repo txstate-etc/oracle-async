@@ -25,12 +25,14 @@ export const db = new Db({
   server: 'yourhost',
   port: 1521,
   service: 'xe',
+  user: 'test-api' // Also configurable via environment variable.
+  password: 'somestrongpassword', // Also configurable via environment variable.
   // lowerCaseColumns determines if row objects will be converted to lowercase keys.
   lowerCaseColumns: true,
   // connectTimeout allows you to specify the number of seconds to wait before timing out connection attempts.
   connectTimeout: 5, // Optional. Default=15, also configurable in environment variable.
   // onStatus is a callback definition to define extra actions on status changes.
-  onStatus: (status) => { console.log(status) }
+  onStatus: (status) => { console.log(status) },
   replicas: [{
     // connectString can be provided for each fallback pool here as well or, if you prefer the string 
     // to be built for you, then you can supply the following three parts for each pool to build with.
@@ -42,7 +44,7 @@ export const db = new Db({
     user: 'someuser', // Also configurable via environment variable.
     password: 'somepassword' // Also configurable via environment variable.
   }]
-  ... // the rest of the options match oracledb library
+  ... // The rest of the options include those inherited from oracledb.PoolAttributes but not referenced above.
 })
 
 async function main() {
