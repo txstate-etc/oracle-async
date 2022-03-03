@@ -112,7 +112,7 @@ type BindInput = BindParameters
 /** Async friendly stream iteration type useful for handling very large result sets without the need for callbacks and event-emitting streams. */
 interface StreamIterator <ReturnType> {
   [Symbol.asyncIterator]: () => StreamIterator<ReturnType>
-  next: () => Promise<{ done: false, value: ReturnType }>
+  next: () => Promise<{ done?: false, value: ReturnType }>
   return: () => Promise<{ done: true, value: ReturnType }>
 }
 /** Async friendly stream iteration type useful for handling very large result sets without the need for callbacks and event-emitting streams. */
