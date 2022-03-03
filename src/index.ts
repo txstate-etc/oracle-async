@@ -89,7 +89,7 @@ export interface ReplicaOptions extends ConnectionOptions {
  * a succesful connection using the primary attributes succedes.
  */
 export interface PoolOptions extends ConnectionOptions, GlobalQueryOptions {
-  /** Callback for the users to supply for each PoolStatus state that they want to specify a callback for. */
+  /** Configurable handler function that can be specified for extra handling, or logging, of PoolStatus state changes. */
   onStatus: (status: PoolStatus) => void|Promise<void>
   replicas?: ReplicaOptions[]
 }
