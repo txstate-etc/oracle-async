@@ -51,50 +51,47 @@ export type PoolStatus = 'up'|'down'|'readonly'
 
 /**
  * A custom extension of the oracledb.PoolAttributes interface used for specifying non-default oracledb.pool configuration properties and custom configuration
- * extensions of this API that aid in simplifying common needs of the underlying oracledb library.
+ * extensions of this API that aid in simplifying connection specific attributes.
  *
  * @remarks oracledb.PoolAttributes provides for the use of either `connectString` or `connectionString` - refferred to here as coonect[ion]String. oracledb.PoolAttributes
  * recommends sticking to one or the other. We will strive to stick with `connectString`.
  *
- * @remarks server, port, and service are technically not needed as they are individual parts of the typically composit coonect[ion]String fields of PoolAttributes.
- * However, they can be used to build the connect[ion]String in the event that a non-Easy Connect string format is passed as would be the case for a Net Service Name
- * referencing an entry in a tnsnames.ora file, or the name of a local Oracle database instance. It is also our practice in this library to expect the coponents of the
- * connect[ion]String to be passed via environment variables and to build the string using those configured environment variables. This makes for less error prone updates
- * should parts of the overall connection change such as just the port - in such case only the port would need to be updated and reviewed instead of the entire connection
- * string verrified in the configuration.
+ * @remarks server, port, and service are technically not needed as they are individual parts of the composit Easy-Connect style string fields of
+ * `oracledb.PoolAttributes.connectString`. However, they are extended here as as a convenience in the absense of a configured coonect[ion]String. In that event
+ * a properly formated Easy-Connect string will be built using these optional extention attributes. */
+export interface ConnectionOptions extends PoolAttributes {
+  /** connectString?: string - Inherited from PoolAttributes. For discussion on using in conjunction with different specifier mechanisms see the following URL.
+   * https://docs.oracle.com/en/database/oracle/oracle-database/18/ntcli/specifying-connection-by-using-empty-connect-string.html */
+  server?: string
+  port?: string|number
+  service?: string
+  connectTimeout?: string|number
+}
+
+/** An extention of the ConnectionOptions interface to provide for additional modifiers to how replica pools are used. */
+export interface ReplicaOptions extends ConnectionOptions {
+  /** Unimplemented behavior modifier. This library may be updated in the future to allow for multiple replica reader slave pools. In that event we may want to specify
+   * if a pool is solely intended for failover purposes and not for multiple readers. */
+  failoverOnly?: boolean
+}
+
+/** An extention of the ConnectionOptions interface that itself extends the oracledb.PoolAttributes interface. This extention is intended to provide configuration
+ * options specific to managing the relationships and status between the primary pool and the replicas pools.
  *
  * @since 1.2.0
- * `replicas?: {...}` was added to allow for the specification of a fallback replica database to be used in the event the primary PoolAttributes
- * are unable to be used to create a connection.
+ * `replicas?: {...}` was added to allow for the specification of a fallback replicas pools to be used in the event the primary pool is unable to create a connection.
  *
- * Fallback replicas are used in conjunction with `PoolStatus` and a `recoveryTimer` to first try connecting to the fallback recovery instance if the main attributes
+ * @remarks Fallback replicas are used in conjunction with `PoolStatus` and a `recoveryTimer` to first try connecting to the fallback recovery instance if the main attributes
  * result in failed connections, and then to retry connections to the primary instance after the recoveryTimer interval has completed. In addtition, if the replica
  * attributes are used to successfully create a connection, in the scenario that the primary attributes fail, then subsequent failure of the replica attributes to work,
  * prior to the completion of the recoveryTimer interval, will start over attempts with the primary attributes and, if continued failure with those attributes, will
  * try again with the replicas attributes until a connection is made updating the PoolStatus and thus resetting the recoveryTimer interval OR the interval ends and
  * a succesful connection using the primary attributes succedes.
  */
-export interface PoolOptions extends PoolAttributes, GlobalQueryOptions {
-  server?: string
-  port?: string|number
-  service?: string
-  /** connectString?: string - Inherited from PoolAttributes. For discussion on using in conjunction with different specifier mechanisms see the following URL.
-   * https://docs.oracle.com/en/database/oracle/oracle-database/18/ntcli/specifying-connection-by-using-empty-connect-string.html */
-  connectTimeout?: number
+export interface PoolOptions extends ConnectionOptions, GlobalQueryOptions {
   /** Callback for the users to supply for each PoolStatus state that they want to specify a callback for. */
   onStatus: (status: PoolStatus) => void|Promise<void>
-  replicas?: {
-    /** failoverOnly?: boolean - Potential for if we want read slaves vs. just using for failover purposes only. Left out for now
-     * to keep things simple. This may be reconsidered as a separate structure from replicas, or even breaking failover (the current
-     * usage) over into its own structure that mirrors replicas which would then serve specifically as replica read pools. */
-    server?: string
-    port?: string|number
-    service?: string
-    connectString?: string
-    connectTimeout?: number
-    user?: string
-    password?: string
-  }[]
+  replicas?: ReplicaOptions[]
 }
 
 /** Used for BindParam support of generic types so long as they implement a toString() function. */
@@ -115,13 +112,14 @@ type BindInput = BindParameters
 /** Async friendly stream iteration type useful for handling very large result sets without the need for callbacks and event-emitting streams. */
 interface StreamIterator <ReturnType> {
   [Symbol.asyncIterator]: () => StreamIterator<ReturnType>
-  next: () => Promise<{ done: boolean, value: ReturnType }>
-  return: () => Promise<{ done: boolean, value: ReturnType }>
+  next: () => Promise<{ done: false, value: ReturnType }>
+  return: () => Promise<{ done: true, value: ReturnType }>
 }
-/** Extending the streams Readable class with our StreamIterator interface specifying next() and return() functions that promise a `{done: boolean, value: T}` return tuple. */
-interface GenericReadable<T> extends Readable {
+/** Async friendly stream iteration type useful for handling very large result sets without the need for callbacks and event-emitting streams. */
+interface GenericReadable <T> extends Readable {
   [Symbol.asyncIterator]: () => StreamIterator<T>
 }
+
 /**
  * Utility function for converting any[], string[] pairs of arrays to a Record<string, any> object of corresponding fields.
  * Useful for converting SQL record results into JSON objects. */
@@ -444,21 +442,23 @@ export default class Db extends Queryable {
     if (process.env.UV_THREADPOOL_SIZE) poolSizeString = String(Math.min(parseInt(poolSizeString!), parseInt(process.env.UV_THREADPOOL_SIZE)))
     /** Accepting the following variables from environment or config to build an Easy-Connect string to provide convenience of not needing to remember Easy-Connect syntax.
      * Note that other connectString formats can be used in conjunction with environment configurations that want to use other connection specifier formats such as Net Service Names or TNS. */
-    const host = config?.server ?? process.env.ORACLE_HOST ?? process.env.ORACLE_SERVER ?? process.env.DB_HOST ?? process.env.DB_SERVER ?? 'oracle'
-    const port = config?.port ?? parseInt(process.env.ORACLE_PORT ?? process.env.DB_PORT ?? '1521')
-    const service = config?.service ?? process.env.ORACLE_SERVICE ?? process.env.DB_SERVICE ?? 'xe'
-    const primaryTimeout = `${config?.connectTimeout ?? process.env.MSSQL_CONNECT_TIMEOUT ?? 15}`
-    const easyConnectString = `${host}:${port}/${service}?connect_timeout=${primaryTimeout}`
-    const connectString = config?.connectString ?? process.env.ORACLE_CONNECT_STRING ?? easyConnectString
+    const primaryHost = config?.server ?? process.env.ORACLE_HOST ?? process.env.ORACLE_SERVER ?? process.env.DB_HOST ?? process.env.DB_SERVER ?? 'oracle'
+    const primaryPort = config?.port ?? parseInt(process.env.ORACLE_PORT ?? process.env.DB_PORT ?? '1521')
+    const primaryService = config?.service ?? process.env.ORACLE_SERVICE ?? process.env.DB_SERVICE ?? 'xe'
+    const primaryUser = config?.user ?? process.env.ORACLE_USER ?? process.env.DB_USER ?? 'system'
+    const primaryPass = config?.password ?? process.env.ORACLE_PASS ?? process.env.ORACLE_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle'
+    const primaryTimeout = `${config?.connectTimeout ?? process.env.ORACLE_CONNECT_TIMEOUT ?? 15}`
+    const easyConnectString = `${primaryHost}:${primaryPort}/${primaryService}?connect_timeout=${primaryTimeout}`
+    const primaryConnectString = config?.connectString ?? process.env.ORACLE_CONNECT_STRING ?? easyConnectString
     this.poolAttributes = {
       queueMax: 1000,
-      connectString: connectString,
+      connectString: primaryConnectString,
       ...config,
-      user: config?.user ?? process.env.ORACLE_USER ?? process.env.DB_USER ?? 'system',
-      password: config?.password ?? process.env.ORACLE_PASS ?? process.env.ORACLE_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle',
+      user: primaryUser,
+      password: primaryPass,
       ...(poolSizeString ? { poolMax: parseInt(poolSizeString) } : {}),
       sessionCallback: (connection, requestedTag, cb) => {
-        console.log('Connected to primary instance: ', connectString)
+        console.log('Connected to primary instance: ', primaryConnectString)
         // Add any SESSION ALTER or connection tagging logic here.
         cb()
       }
@@ -472,12 +472,11 @@ export default class Db extends Queryable {
     if (config?.replicas?.length) {
       for (const replica of config?.replicas) {
         const timeout = `connect_timeout=${replica.connectTimeout ?? primaryTimeout}`
-        const easyConnectString = `${replica.server ?? host}:${replica.port ?? port}/${replica.service ?? service}?${timeout}`
+        const easyConnectString = `${replica.server ?? primaryHost}:${replica.port ?? primaryPort}/${replica.service ?? primaryService}?${timeout}`
         const connectString = replica.connectString ?? easyConnectString
         this.replicaAttributes.push({
           ...this.poolAttributes,
-          ...(replica.user ? { user: replica.user } : {}),
-          ...(replica.password ? { password: replica.password } : {}),
+          ...replica,
           connectString: connectString,
           sessionCallback: (connection, requestedTag, cb) => {
             console.log('Connected to replica instance: ', connectString)
@@ -488,14 +487,15 @@ export default class Db extends Queryable {
       }
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     } else if (process.env.ORACLE_REPLICA_SERVICE || process.env.ORACLE_REPLICA_CONNECT_STRING) {
-      const timeout = `connect_timeout=${primaryTimeout}`
-      const easyConnectString = `${process.env.ORACLE_REPLICA_HOST ?? host}:${process.env.ORACLE_REPLICA_PORT ?? port}/${process.env.ORACLE_REPLICA_SERVICE ?? service}?${timeout}`
+      const timeout = `connect_timeout=${process.env.ORACLE_REPLICA_CONNECT_TIMEOUT ?? primaryTimeout}`
+      const easyConnectString = `${process.env.ORACLE_REPLICA_HOST ?? primaryHost}:${process.env.ORACLE_REPLICA_PORT ?? primaryPort}/${process.env.ORACLE_REPLICA_SERVICE ?? primaryService}?${timeout}`
       const connectString = process.env.ORACLE_REPLICA_CONNECT_STRING ?? easyConnectString
-      const passwd = process.env.ORACLE_REPLICA_PASS ?? process.env.ORACLE_REPLICA_PASSWORD
+      const replicaUser = process.env.ORACLE_REPLICA_USER
+      const replicaPasswd = process.env.ORACLE_REPLICA_PASS ?? process.env.ORACLE_REPLICA_PASSWORD
       this.replicaAttributes.push({
         ...this.poolAttributes,
-        ...(process.env.ORACLE_REPLICA_USER ? { user: process.env.ORACLE_REPLICA_USER } : {}),
-        ...(passwd ? { password: passwd } : {}),
+        ...(replicaUser ? { user: replicaUser } : {}),
+        ...(replicaPasswd ? { password: replicaPasswd } : {}),
         connectString: connectString,
         sessionCallback: (connection, requestedTag, cb) => {
           console.log('Connected to replica instance: ', connectString)
