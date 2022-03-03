@@ -25,8 +25,9 @@ export const db = new Db({
   server: 'yourhost',
   port: 1521,
   service: 'xe',
-  user: 'test-api' // Also configurable via environment variable.
+  user: 'test-api', // Also configurable via environment variable.
   password: 'somepassword', // Also configurable via environment variable.
+
   // lowerCaseColumns determines if row objects will be converted to lowercase keys.
   lowerCaseColumns: true,
   // connectTimeout allows you to specify the number of seconds to wait before timing out connection attempts.
