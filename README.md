@@ -58,37 +58,37 @@ main().catch(e => console.error(e))
 
 When working in docker, it's common to keep database configuration in environment variables. In order to make that easy, this library provides a convenient way to import singleton pool attributes created with the following environment variables:
 
-```
-  ORACLE_HOST (default 'oracle')
-  ORACLE_PORT (default '1521')
-  ORACLE_SERVICE (default 'xe')
-  ORACLE_CONNECT_STRING (specify the primary connect string or build with the above)
-  ORACLE_CONNECT_TIMEOUT (default 15)
-  ORACLE_USER (default 'system')
-  ORACLE_PASS
+```bash
+  ORACLE_HOST= #(default 'oracle')
+  ORACLE_PORT= #(default '1521')
+  ORACLE_SERVICE= #(default 'xe')
+  ORACLE_CONNECT_STRING= #(specify the primary connect string or build with the above)
+  ORACLE_CONNECT_TIMEOUT= #(default 15)
+  ORACLE_USER= # (default 'system')
+  ORACLE_PASS= # (specify in override)
 
   # The following are provided for a singleton connection pool configuration of a single replica instance. Additional
   # replica configs can be passed through the oracle-async.PoolOptions config object passed to the Db constructor but for 
   # simpler environment variable driven setup the following replica environment variables are supported.
-  ORACLE_REPLICA_HOST (defaults to primary pool's host)
-  ORACLE_REPLICA_PORT (defaults to primary pool's port)
-  ORACLE_REPLICA_SERVICE (will not use above replica environment variables if not defined)
-  ORACLE_REPLICA_CONNECT_STRING (specify the replica connect string, or build with the above, or default to primary)
-  ORACLE_REPLICA_CONNECT_TIMEOUT (defaults to primary pool's timeout)
-  ORACLE_REPLICA_USER (defaults to primary pool's user)
-  ORACLE_REPLICA_PASS (defaults to primary pool's password)
+  ORACLE_REPLICA_HOST= # (defaults to primary pool's host)
+  ORACLE_REPLICA_PORT= # (defaults to primary pool's port)
+  ORACLE_REPLICA_SERVICE= # (will not use above replica environment variables if not defined)
+  ORACLE_REPLICA_CONNECT_STRING= # (specify the replica connect string, or build with the above, or default to primary)
+  ORACLE_REPLICA_CONNECT_TIMEOUT= # (defaults to primary pool's timeout)
+  ORACLE_REPLICA_USER= # (defaults to primary pool's user)
+  ORACLE_REPLICA_PASS= # (specify in override - defaults to primary pool's password)
 
   # In addition to the above, the following will be applied to all pools if configured. This can be overridden for 
   # replicas if the Db constructor is passed a PoolOptions config that specifies otherwise for any replicas with
   # configuration deviations that are diresired.
 
-  UV_THREADPOOL_SIZE (default 4)
+  UV_THREADPOOL_SIZE= # (default 4)
   # This controls both the number of threads oracle client starts up with and max connections
   # in the pool, which should match unless you have multiple pools/database servers.
   # In that case, you should set ORACLE_POOL_SIZE to something smaller, and then make sure your
   # pools' max connections all add up to UV_THREADPOOL_SIZE or less
 
-  ORACLE_LOWERCASE
+  ORACLE_LOWERCASE= #('true')
   # If this is truthy, row objects will have lowercase keys instead of uppercase, just a quality
   # of life thing. You can also set this as a default at runtime with `db.setQueryOptions({ lowerCaseColumns: true })`
 ```
