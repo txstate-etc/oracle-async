@@ -458,7 +458,7 @@ export default class Db extends Queryable {
       password: primaryPass,
       ...(poolSizeString ? { poolMax: parseInt(poolSizeString) } : {}),
       sessionCallback: (connection, requestedTag, cb) => {
-        console.log('Connected to primary instance: ', primaryConnectString)
+        console.info('Connected to Oracle instance: ', primaryConnectString)
         // Add any SESSION ALTER or connection tagging logic here.
         cb()
       }
@@ -479,7 +479,7 @@ export default class Db extends Queryable {
           ...replica,
           connectString: connectString,
           sessionCallback: (connection, requestedTag, cb) => {
-            console.log('Connected to replica instance: ', connectString)
+            console.info('Connected to Oracle replica instance: ', connectString)
             // Add any SESSION ALTER or connection tagging logic here.
             cb()
           }
@@ -498,7 +498,7 @@ export default class Db extends Queryable {
         ...(replicaPasswd ? { password: replicaPasswd } : {}),
         connectString: connectString,
         sessionCallback: (connection, requestedTag, cb) => {
-          console.log('Connected to replica instance: ', connectString)
+          console.info('Connected to Oracle replica instance: ', connectString)
           // Add any SESSION ALTER or connection tagging logic here.
           cb()
         }
