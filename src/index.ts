@@ -66,6 +66,7 @@ export interface ConnectionOptions extends PoolAttributes {
   port?: string|number
   service?: string
   connectTimeout?: string|number
+  expireTime?: string|number
 }
 
 /** An extention of the ConnectionOptions interface to provide for additional modifiers to how replica pools are used. */
@@ -448,7 +449,8 @@ export default class Db extends Queryable {
     const primaryUser = config?.user ?? process.env.ORACLE_USER ?? process.env.DB_USER ?? 'system'
     const primaryPass = config?.password ?? process.env.ORACLE_PASS ?? process.env.ORACLE_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle'
     const primaryTimeout = `${config?.connectTimeout ?? process.env.ORACLE_CONNECT_TIMEOUT ?? 15}`
-    const easyConnectString = `${primaryHost}:${primaryPort}/${primaryService}?connect_timeout=${primaryTimeout}`
+    const validityCheckSeconds = String(config?.expireTime ?? 2)
+    const easyConnectString = `${primaryHost}:${primaryPort}/${primaryService}?connect_timeout=${primaryTimeout}&expire_time=${validityCheckSeconds}`
     const primaryConnectString = config?.connectString ?? process.env.ORACLE_CONNECT_STRING ?? easyConnectString
     this.poolAttributes = {
       queueMax: 1000,
