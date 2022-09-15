@@ -474,7 +474,7 @@ export default class Db extends Queryable {
     if (config?.replicas?.length) {
       for (const replica of config?.replicas) {
         const timeout = `connect_timeout=${replica.connectTimeout ?? primaryTimeout}`
-        const easyConnectString = `${replica.server ?? primaryHost}:${replica.port ?? primaryPort}/${replica.service ?? primaryService}?${timeout}`
+        const easyConnectString = `${replica.server ?? primaryHost}:${replica.port ?? primaryPort}/${replica.service ?? primaryService}?${timeout}&expire_time=${validityCheckSeconds}`
         const connectString = replica.connectString ?? easyConnectString
         this.replicaAttributes.push({
           ...this.poolAttributes,
@@ -490,7 +490,7 @@ export default class Db extends Queryable {
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     } else if (process.env.ORACLE_REPLICA_SERVICE || process.env.ORACLE_REPLICA_CONNECT_STRING) {
       const timeout = `connect_timeout=${process.env.ORACLE_REPLICA_CONNECT_TIMEOUT ?? primaryTimeout}`
-      const easyConnectString = `${process.env.ORACLE_REPLICA_HOST ?? primaryHost}:${process.env.ORACLE_REPLICA_PORT ?? primaryPort}/${process.env.ORACLE_REPLICA_SERVICE ?? primaryService}?${timeout}`
+      const easyConnectString = `${process.env.ORACLE_REPLICA_HOST ?? primaryHost}:${process.env.ORACLE_REPLICA_PORT ?? primaryPort}/${process.env.ORACLE_REPLICA_SERVICE ?? primaryService}?${timeout}&expire_time=${validityCheckSeconds}`
       const connectString = process.env.ORACLE_REPLICA_CONNECT_STRING ?? easyConnectString
       const replicaUser = process.env.ORACLE_REPLICA_USER
       const replicaPasswd = process.env.ORACLE_REPLICA_PASS ?? process.env.ORACLE_REPLICA_PASSWORD
