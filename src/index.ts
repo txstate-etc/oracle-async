@@ -529,6 +529,7 @@ export default class Db extends Queryable {
         connectString: connectString,
         sessionCallback: async (connection, requestedTag, cb) => {
           console.info('Connected to Oracle replica instance: ', connectString)
+          connection.callTimeout = config?.callTimeout ?? 0
           // Add any SESSION ALTER or connection tagging logic here.
           try {
             await config?.sessionCallback?.(connection, requestedTag)
