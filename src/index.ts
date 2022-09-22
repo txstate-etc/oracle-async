@@ -454,8 +454,9 @@ export default class Db extends Queryable {
     super()
     this.status = 'up'
     this.onStatus = config?.onStatus
-    let poolSizeString = process.env.ORACLE_POOL_SIZE ?? process.env.DB_POOL_SIZE ?? process.env.UV_THREADPOOL_SIZE
-    if (process.env.UV_THREADPOOL_SIZE) poolSizeString = String(Math.min(parseInt(poolSizeString!), parseInt(process.env.UV_THREADPOOL_SIZE)))
+    const threads = parseInt(process.env.UV_THREADPOOL_SIZE ?? '4')
+    const poolSizeString = process.env.ORACLE_POOL_SIZE ?? process.env.DB_POOL_SIZE ?? String(Math.max(3, Math.ceil(threads - 3)))
+    const poolMax = Math.min(parseInt(poolSizeString), threads)
     /** Accepting the following variables from environment or config to build an Easy-Connect string to provide convenience of not needing to remember Easy-Connect syntax.
      * Note that other connectString formats can be used in conjunction with environment configurations that want to use other connection specifier formats such as Net Service Names or TNS. */
     const primaryHost = config?.server ?? process.env.ORACLE_HOST ?? process.env.ORACLE_SERVER ?? process.env.DB_HOST ?? process.env.DB_SERVER ?? 'oracle'
@@ -473,7 +474,7 @@ export default class Db extends Queryable {
       ...config,
       user: primaryUser,
       password: primaryPass,
-      ...(poolSizeString ? { poolMax: parseInt(poolSizeString) } : {}),
+      poolMax,
       sessionCallback: async (connection, requestedTag, cb) => {
         console.info('Connected to Oracle instance: ', primaryConnectString)
         connection.callTimeout = config?.callTimeout ?? 0
