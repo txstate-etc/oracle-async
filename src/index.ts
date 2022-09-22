@@ -17,6 +17,9 @@ export interface QueryOptions extends GlobalQueryOptions {
 
   /** This query should not be sent to a replica server, default false for reads, true for writes. */
   mainServer?: boolean
+
+  /** Time in milliseconds to allow this query to execute before cancelling. Default is set in the pool options. */
+  callTimeout?: number
 }
 
 /** Extention of QueryOptions and ExecuteOptions to include `rowsAsArrays?: boolean` to specify raw results vs the default of json'd results. */
@@ -67,6 +70,12 @@ export interface ConnectionOptions extends PoolAttributes {
   service?: string
   connectTimeout?: string|number
   expireTime?: string|number
+  /**
+   * Sets the default callTimeout on each connection before sending a query.
+   * See http://oracle.github.io/node-oracledb/doc/api.html#-412-connectioncalltimeout
+   */
+  callTimeout?: number
+  sessionCallback?: (connection: Connection, requestedTag: string) => Promise<void>
 }
 
 /** An extention of the ConnectionOptions interface to provide for additional modifiers to how replica pools are used. */
@@ -148,7 +157,13 @@ export class Queryable {
    */
   async queryWithConn <ReturnType = DefaultReturnType> (conn: Connection, sql: string, binds?: BindInput, options?: InternalOptions) {
     try {
+      let saveTimeout: number | undefined
+      if (options?.callTimeout) {
+        saveTimeout = conn.callTimeout
+        conn.callTimeout = options.callTimeout
+      }
       const result = await conn.execute<ReturnType>(sql, binds ?? {}, { autoCommit: options?.autoCommit ?? true, outFormat: oracledb.OUT_FORMAT_ARRAY })
+      if (options?.callTimeout) conn.callTimeout = saveTimeout
       if (result.rows && result.metaData && !options?.rowsAsArray) {
         const colnames = options?.lowerCaseColumns ?? this.queryOptions?.lowerCaseColumns
           ? result.metaData.map(md => md.name.toLocaleLowerCase())
@@ -459,10 +474,16 @@ export default class Db extends Queryable {
       user: primaryUser,
       password: primaryPass,
       ...(poolSizeString ? { poolMax: parseInt(poolSizeString) } : {}),
-      sessionCallback: (connection, requestedTag, cb) => {
+      sessionCallback: async (connection, requestedTag, cb) => {
         console.info('Connected to Oracle instance: ', primaryConnectString)
+        connection.callTimeout = config?.callTimeout ?? 0
         // Add any SESSION ALTER or connection tagging logic here.
-        cb()
+        try {
+          await config?.sessionCallback?.(connection, requestedTag)
+          cb()
+        } catch (e: any) {
+          cb(e)
+        }
       }
     }
     this.queryOptions = {
@@ -480,10 +501,17 @@ export default class Db extends Queryable {
           ...this.poolAttributes,
           ...replica,
           connectString: connectString,
-          sessionCallback: (connection, requestedTag, cb) => {
+          sessionCallback: async (connection, requestedTag, cb) => {
             console.info('Connected to Oracle replica instance: ', connectString)
+            connection.callTimeout = replica?.callTimeout ?? config?.callTimeout ?? 0
             // Add any SESSION ALTER or connection tagging logic here.
-            cb()
+            try {
+              await config?.sessionCallback?.(connection, requestedTag)
+              await replica?.sessionCallback?.(connection, requestedTag)
+              cb()
+            } catch (e: any) {
+              cb(e)
+            }
           }
         })
       }
@@ -499,10 +527,15 @@ export default class Db extends Queryable {
         ...(replicaUser ? { user: replicaUser } : {}),
         ...(replicaPasswd ? { password: replicaPasswd } : {}),
         connectString: connectString,
-        sessionCallback: (connection, requestedTag, cb) => {
+        sessionCallback: async (connection, requestedTag, cb) => {
           console.info('Connected to Oracle replica instance: ', connectString)
           // Add any SESSION ALTER or connection tagging logic here.
-          cb()
+          try {
+            await config?.sessionCallback?.(connection, requestedTag)
+            cb()
+          } catch (e: any) {
+            cb(e)
+          }
         }
       })
     }
