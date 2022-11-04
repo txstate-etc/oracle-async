@@ -48,7 +48,7 @@ export interface StreamOptions extends QueryOptions {
  * 'readonly' - indicates the fallback/replica connection pool is active.
  *     'down' - indicates NO connection pools are active.
  * ``` */
-export type PoolStatus = 'up'|'down'|'readonly'
+export type PoolStatus = 'up' | 'down' | 'readonly'
 /** On discussion of adding additional states for indicating status while awaiting a confirmed up or readonly connection we decided that keeping it simple
  * was desireable to prevent over complicating state handling and encumbering the PoolStatus setting with ultimately unnessary checks. */
 
@@ -66,10 +66,10 @@ export interface ConnectionOptions extends PoolAttributes {
   /** connectString?: string - Inherited from PoolAttributes. For discussion on using in conjunction with different specifier mechanisms see the following URL.
    * https://docs.oracle.com/en/database/oracle/oracle-database/18/ntcli/specifying-connection-by-using-empty-connect-string.html */
   server?: string
-  port?: string|number
+  port?: string | number
   service?: string
-  connectTimeout?: string|number
-  expireTime?: string|number
+  connectTimeout?: string | number
+  expireTime?: string | number
   /**
    * Sets the default callTimeout on each connection before sending a query.
    * See http://oracle.github.io/node-oracledb/doc/api.html#-412-connectioncalltimeout
@@ -100,7 +100,7 @@ export interface ReplicaOptions extends ConnectionOptions {
  */
 export interface PoolOptions extends ConnectionOptions, GlobalQueryOptions {
   /** Configurable handler function that can be specified for extra handling, or logging, of PoolStatus state changes. */
-  onStatus: (status: PoolStatus) => void|Promise<void>
+  onStatus: (status: PoolStatus) => void | Promise<void>
   replicas?: ReplicaOptions[]
 }
 
@@ -109,11 +109,11 @@ interface canBeStringed {
   toString: () => string
 }
 /** Allowable bind parameter/object types specification. */
-type BindParam = number|string|null|Date|Buffer|canBeStringed|BindObject
+type BindParam = number | string | null | Date | Buffer | canBeStringed | BindObject
 interface BindObject { [keys: string]: BindParam }
 
 /** Allowable Oracle return types specification. */
-type ColTypes = number|string|null|Date|Buffer
+type ColTypes = number | string | null | Date | Buffer
 interface DefaultReturnType { [keys: string]: ColTypes }
 
 /** Colloquial reference to oracledb.BindParameters. */
@@ -310,7 +310,7 @@ ${sql}`
   }
 
   /** Internal function - saving review for documentation later. */
-  protected feedStream<ReturnType> (conn: Connection, stream: GenericReadable<ReturnType>, sql: string, binds: BindInput, stacktrace: string|undefined, options: StreamOptions = {}) {
+  protected feedStream<ReturnType> (conn: Connection, stream: GenericReadable<ReturnType>, sql: string, binds: BindInput, stacktrace: string | undefined, options: StreamOptions = {}) {
     const req = conn.queryStream(sql, binds, { outFormat: oracledb.OUT_FORMAT_ARRAY })
 
     stream._read = () => {
@@ -445,8 +445,8 @@ export default class Db extends Queryable {
   protected poolAttributes: PoolAttributes
   protected connectpromise!: Promise<void>
   public status: PoolStatus
-  protected onStatus?: (status: PoolStatus) => void|Promise<void>
-  protected replicas: Pool[]
+  protected onStatus?: (status: PoolStatus) => void | Promise<void>
+  protected replicas: Promise<Pool>[]
   protected replicaAttributes: PoolAttributes[]
   protected recoveryTimer?: NodeJS.Timeout
 
@@ -475,16 +475,11 @@ export default class Db extends Queryable {
       user: primaryUser,
       password: primaryPass,
       poolMax,
-      sessionCallback: async (connection, requestedTag, cb) => {
+      sessionCallback: (connection, requestedTag, cb) => {
         console.info('Connected to Oracle instance: ', primaryConnectString)
         connection.callTimeout = config?.callTimeout ?? 0
         // Add any SESSION ALTER or connection tagging logic here.
-        try {
-          await config?.sessionCallback?.(connection, requestedTag)
-          cb()
-        } catch (e: any) {
-          cb(e)
-        }
+        config?.sessionCallback?.(connection, requestedTag).then(() => cb()).catch(cb) ?? cb()
       }
     }
     this.queryOptions = {
@@ -501,18 +496,15 @@ export default class Db extends Queryable {
         this.replicaAttributes.push({
           ...this.poolAttributes,
           ...replica,
-          connectString: connectString,
-          sessionCallback: async (connection, requestedTag, cb) => {
+          connectString,
+          sessionCallback: (connection, requestedTag, cb) => {
             console.info('Connected to Oracle replica instance: ', connectString)
             connection.callTimeout = replica?.callTimeout ?? config?.callTimeout ?? 0
             // Add any SESSION ALTER or connection tagging logic here.
-            try {
-              await config?.sessionCallback?.(connection, requestedTag)
-              await replica?.sessionCallback?.(connection, requestedTag)
-              cb()
-            } catch (e: any) {
-              cb(e)
-            }
+            config?.sessionCallback?.(connection, requestedTag)
+              .then(() => replica?.sessionCallback?.(connection, requestedTag))
+              .then(() => cb())
+              .catch(cb) ?? cb()
           }
         })
       }
@@ -527,17 +519,12 @@ export default class Db extends Queryable {
         ...this.poolAttributes,
         ...(replicaUser ? { user: replicaUser } : {}),
         ...(replicaPasswd ? { password: replicaPasswd } : {}),
-        connectString: connectString,
-        sessionCallback: async (connection, requestedTag, cb) => {
+        connectString,
+        sessionCallback: (connection, requestedTag, cb) => {
           console.info('Connected to Oracle replica instance: ', connectString)
           connection.callTimeout = config?.callTimeout ?? 0
           // Add any SESSION ALTER or connection tagging logic here.
-          try {
-            await config?.sessionCallback?.(connection, requestedTag)
-            cb()
-          } catch (e: any) {
-            cb(e)
-          }
+          config?.sessionCallback?.(connection, requestedTag).then(() => cb()).catch(cb) ?? cb()
         }
       })
     }
@@ -589,8 +576,9 @@ export default class Db extends Queryable {
   private async getReplicaConnection () {
     for (let i = 0; i < this.replicaAttributes.length; i++) {
       try {
-        this.replicas[i] ??= await oracledb.createPool(this.replicaAttributes[i])
-        const conn = await this.replicas[i].getConnection()
+        this.replicas[i] ??= oracledb.createPool(this.replicaAttributes[i])
+        const pool = await this.replicas[i]
+        const conn = await pool.getConnection()
         this.setStatus('readonly')
         return conn
       } catch (e: any) {
@@ -608,7 +596,7 @@ export default class Db extends Queryable {
    * @param mainServer - Specifies that the connection MUST be to the primary instance and should not be used with replicas.
    * @returns an oracledb.Pool to the primary database or first available replica database described in the replicaAttributes array.
    */
-  private async getConnection (mainServer: boolean|undefined) {
+  private async getConnection (mainServer: boolean | undefined) {
     if (!mainServer && this.status !== 'up' && this.replicas.length) {
       return await this.getReplicaConnection()
     } else {
