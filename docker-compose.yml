@@ -1,6 +1,7 @@
 version: '3'
 services:
   oracle-async:
+    platform: linux/amd64
     build:
       context: .
     environment:
@@ -9,8 +10,8 @@ services:
     depends_on:
       - oracle
   oracle:
-    image: wnameless/oracle-xe-11g-r2
-    logging:
-      driver: none
+    platform: linux/amd64
+    image: gvenzl/oracle-xe:11-slim
     environment:
       TZ: America/Los_Angeles
+      ORACLE_PASSWORD: oracle
