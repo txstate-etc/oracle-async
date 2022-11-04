@@ -446,7 +446,7 @@ export default class Db extends Queryable {
   protected connectpromise!: Promise<void>
   public status: PoolStatus
   protected onStatus?: (status: PoolStatus) => void | Promise<void>
-  protected replicas: Promise<Pool>[]
+  protected replicas: (Promise<Pool> | undefined)[]
   protected replicaAttributes: PoolAttributes[]
   protected recoveryTimer?: NodeJS.Timeout
 
@@ -577,7 +577,13 @@ export default class Db extends Queryable {
     for (let i = 0; i < this.replicaAttributes.length; i++) {
       try {
         this.replicas[i] ??= oracledb.createPool(this.replicaAttributes[i])
-        const pool = await this.replicas[i]
+        let pool: oracledb.Pool
+        try {
+          pool = await this.replicas[i]!
+        } catch (e: any) {
+          this.replicas[i] = undefined
+          throw (e)
+        }
         const conn = await pool.getConnection()
         this.setStatus('readonly')
         return conn
@@ -644,7 +650,7 @@ export default class Db extends Queryable {
     let mainServer = true
     while (true) {
       try {
-        this.pool = await oracledb.createPool(this.poolAttributes) // Do we want to continue doing this here or break this out?
+        this.pool ??= await oracledb.createPool(this.poolAttributes) // Do we want to continue doing this here or break this out?
         const conn = await this.getConnection(mainServer)
         await conn.close()
         return
