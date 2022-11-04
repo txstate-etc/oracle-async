@@ -71,7 +71,7 @@ export interface ConnectionOptions extends PoolAttributes {
   connectTimeout?: string|number
   expireTime?: string|number
   /**
-   * Sets the default callTimeout on each connection before sending a query.
+   * Sets the default callTimeout, in milliseconds, on each connection before sending a query.
    * See http://oracle.github.io/node-oracledb/doc/api.html#-412-connectioncalltimeout
    */
   callTimeout?: number
@@ -446,7 +446,7 @@ export default class Db extends Queryable {
   protected connectpromise!: Promise<void>
   public status: PoolStatus
   protected onStatus?: (status: PoolStatus) => void|Promise<void>
-  protected replicas: Pool[]
+  protected replicas: (Pool|undefined)[]
   protected replicaAttributes: PoolAttributes[]
   protected recoveryTimer?: NodeJS.Timeout
 
@@ -589,7 +589,8 @@ export default class Db extends Queryable {
   private async getReplicaConnection () {
     for (let i = 0; i < this.replicaAttributes.length; i++) {
       try {
-        this.replicas[i] ??= await oracledb.createPool(this.replicaAttributes[i])
+        // We were using ??= here but that caused the right hand operation to be run until first await fullfilled.
+        if (!this.replicas[i]) this.replicas[i] = await this.getPool(this.replicaAttributes[i], `Replica[${i}]`)
         const conn = await this.replicas[i].getConnection()
         this.setStatus('readonly')
         return conn
@@ -646,17 +647,46 @@ export default class Db extends Queryable {
     }
   }
 
+  /** Logs stats about the passed in Pool every 15 minutes. */
+  async poolStatLogging (pool: Pool) {
+    while (true) {
+      const stats = pool.getStatistics()
+      console.info(Date.now(), stats)
+      // Interval every 15 minutes.
+      await new Promise(resolve => setTimeout(resolve, 900000))
+    }
+  }
+
+  /** Creates and returns a connection pool with the passed in attributes - retrying until successful.
+   * Also starts an interval pool stat logger for the associated pool on successful creation. */
+  async getPool (attributes: PoolAttributes, poolAlias?: string) {
+    let created: boolean = false
+    while (!created) {
+      try {
+        const pool = await oracledb.createPool({ enableStatistics: true, poolAlias, ...attributes })
+        // Find a way to verify our Pool is a Pool and not undefined.
+        
+        void this.poolStatLogging(pool)
+        created = true
+        return pool
+      } catch (e: any) {
+        console.error(e.message)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  }
+
   /**
-   * Instantiates an oracledb.Pool object and loops every two seconds testing that a connection can be made with the
-   * configuration supplied by the calling environment or optional config supplied at Db object construction. This
-   * function will only return once a connection is successfully made to either the primary instance or any replica
-   * instances. */
+   * Instantiates an oracledb.Pool object, if not instantiated, and loops every two seconds testing that a connection
+   * can be made with the configuration supplied by the calling environment or optional config supplied at Db object
+   * construction. This function will only return once a connection is successfully made to either the primary instance
+   * or any replica instances. */
   async connect () {
     let errorcount = 0
     let mainServer = true
     while (true) {
       try {
-        this.pool = await oracledb.createPool(this.poolAttributes) // Do we want to continue doing this here or break this out?
+        if (!this.pool) this.pool = await this.getPool(this.poolAttributes, 'Main')
         const conn = await this.getConnection(mainServer)
         await conn.close()
         return
