@@ -585,7 +585,7 @@ export default class Db extends Queryable {
           throw (e)
         }
         const conn = await pool.getConnection()
-        this.setStatus('readonly')
+        if (this.status === 'down') this.setStatus('readonly')
         return conn
       } catch (e: any) {
         console.error(e.message)
@@ -608,7 +608,7 @@ export default class Db extends Queryable {
     } else {
       try {
         const conn = await this.pool!.getConnection()
-        this.status = 'up'
+        this.setStatus('up')
         return conn
       } catch (e: any) {
         if (this.replicaAttributes.length) {
