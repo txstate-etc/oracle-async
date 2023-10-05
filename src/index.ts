@@ -710,25 +710,29 @@ export default class Db extends Queryable {
    * to make in the event of an error being thrown by any of the actions in the callback function.
    * @note There's no need to START, ROLLBACK, or COMMIT the transaction. That is all handled automatically by this transaction wrapper
    * function - according to results of the `callback` function's actions. */
-  async transaction <ReturnType> (callback: (db: Queryable) => Promise<ReturnType>, options?: { retries?: number }): Promise<ReturnType> {
+  async transaction <ReturnType> (callback: (db: Queryable) => Promise<ReturnType>, options?: { retries?: number, retryPause?: number }): Promise<ReturnType> {
     await this.wait()
+    let retries = options?.retries ?? 0
     const transaction = await this.getConnection(true)
     const db = new Queryable(transaction, this.queryOptions)
     try {
-      const ret = await callback(db)
-      await transaction.commit()
-      await transaction.close()
-      return ret
-    } catch (e: any) {
-      if (e.errorNum === 60 && options?.retries && options.retries > 0) { // deadlock
-        await transaction.close()
-        return await this.transaction(callback, { ...options, retries: options.retries - 1 })
-      } else {
-        // rollback unnecessary on deadlock, in fact it throws a new error, which is problematic
-        if (e.errorNum !== 60) await transaction.rollback()
-        await transaction.close()
-        throw e
+      while (true) {
+        try {
+          const ret = await callback(db)
+          await transaction.commit()
+          return ret
+        } catch (e: any) {
+          if (e.errorNum === 60 && retries > 0) { // deadlock and we will retry after a short pause
+            retries--
+            await transaction.rollback()
+            await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * (options?.retryPause ?? 100))))
+          } else {
+            throw e
+          }
+        }
       }
+    } finally {
+      await transaction.close()
     }
   }
 }
