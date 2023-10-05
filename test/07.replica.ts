@@ -18,7 +18,7 @@ describe('connecting to replica servers', () => {
       await db.update('UPDATE test SET name="never"')
       expect.fail('should have thrown')
     } catch (e: any) {
-      expect(e.message).to.match(/no listener/i)
+      expect(e.message).to.match(/NJS-503/i)
     }
   })
   it('should error trying to open a transaction on the replica server', async () => {
@@ -28,7 +28,7 @@ describe('connecting to replica servers', () => {
       })
       expect.fail('should have thrown')
     } catch (e: any) {
-      expect(e.message).to.match(/no listener/i)
+      expect(e.message).to.match(/NJS-503/i)
     }
   })
 })

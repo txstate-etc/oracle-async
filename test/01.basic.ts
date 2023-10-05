@@ -32,7 +32,7 @@ describe('basic tests', () => {
 
     const count = await db.getval("SELECT COUNT(*) FROM user_tables WHERE table_name IN ('TEST', 'TEST2')")
     expect(count).to.be.greaterThan(0)
-  })
+  }).timeout(6000)
 
   it('should be able to add test data', async () => {
     const thousand = Array.from(Array(1000))
@@ -43,7 +43,7 @@ describe('basic tests', () => {
     SELECT * FROM insertrows
     `
     await db.insert(`INSERT INTO test (name, modified) ${values}`, {})
-  })
+  }).timeout(6000)
 
   it('should be able to add more test data', async () => {
     const thousand = Array.from(Array(1000))

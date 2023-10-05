@@ -1,8 +1,5 @@
 /* global before */
 import Db from '../src'
-import chai from 'chai'
-import chaiAsPromised from 'chai-as-promised'
-chai.use(chaiAsPromised)
 
 before(async function () {
   this.timeout(100000)

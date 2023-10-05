@@ -1,7 +1,6 @@
 version: '3'
 services:
   oracle-async:
-    platform: linux/amd64
     build:
       context: .
     environment:
@@ -11,7 +10,7 @@ services:
       - oracle
   oracle:
     platform: linux/amd64
-    image: gvenzl/oracle-xe:11-slim
+    image: gvenzl/oracle-xe:21-slim
     environment:
       TZ: America/Los_Angeles
       ORACLE_PASSWORD: oracle

@@ -68,8 +68,6 @@ export interface ConnectionOptions extends PoolAttributes {
   server?: string
   port?: string | number
   service?: string
-  connectTimeout?: string | number
-  expireTime?: string | number
   /**
    * Sets the default callTimeout on each connection before sending a query.
    * See http://oracle.github.io/node-oracledb/doc/api.html#-412-connectioncalltimeout
@@ -450,7 +448,7 @@ export default class Db extends Queryable {
   protected replicaAttributes: PoolAttributes[]
   protected recoveryTimer?: NodeJS.Timeout
 
-  constructor (config?: Partial<PoolOptions>) {
+  constructor (config: Partial<PoolOptions> = {}) {
     super()
     this.status = 'up'
     this.onStatus = config?.onStatus
@@ -472,6 +470,8 @@ export default class Db extends Queryable {
       queueMax: 1000,
       connectString: primaryConnectString,
       ...config,
+      connectTimeout: parseInt(primaryTimeout, 10),
+      expireTime: parseInt(validityCheckSeconds, 10),
       user: primaryUser,
       password: primaryPass,
       poolMax,
