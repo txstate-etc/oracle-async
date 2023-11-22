@@ -1,4 +1,4 @@
-import oracledb, { BindParameters, Connection, ExecuteOptions, Pool, PoolAttributes } from 'oracledb'
+import oracledb, { type BindParameters, type Connection, type ExecuteOptions, type Pool, type PoolAttributes } from 'oracledb'
 import { Readable } from 'stream'
 
 /**
@@ -108,11 +108,12 @@ interface canBeStringed {
 }
 /** Allowable bind parameter/object types specification. */
 type BindParam = number | string | null | Date | Buffer | canBeStringed | BindObject
+// eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style
 interface BindObject { [keys: string]: BindParam }
 
 /** Allowable Oracle return types specification. */
 type ColTypes = number | string | null | Date | Buffer
-interface DefaultReturnType { [keys: string]: ColTypes }
+type DefaultReturnType = Record<string, ColTypes>
 
 /** Colloquial reference to oracledb.BindParameters. */
 type BindInput = BindParameters
@@ -479,7 +480,7 @@ export default class Db extends Queryable {
         console.info('Connected to Oracle instance: ', primaryConnectString)
         connection.callTimeout = config?.callTimeout ?? 0
         // Add any SESSION ALTER or connection tagging logic here.
-        config?.sessionCallback?.(connection, requestedTag).then(() => cb()).catch(cb) ?? cb()
+        config?.sessionCallback?.(connection, requestedTag).then(() => { cb() }).catch(cb) ?? cb()
       }
     }
     this.queryOptions = {
@@ -502,8 +503,8 @@ export default class Db extends Queryable {
             connection.callTimeout = replica?.callTimeout ?? config?.callTimeout ?? 0
             // Add any SESSION ALTER or connection tagging logic here.
             config?.sessionCallback?.(connection, requestedTag)
-              .then(() => replica?.sessionCallback?.(connection, requestedTag))
-              .then(() => cb())
+              .then(async () => await replica?.sessionCallback?.(connection, requestedTag))
+              .then(() => { cb() })
               .catch(cb) ?? cb()
           }
         })
@@ -524,7 +525,7 @@ export default class Db extends Queryable {
           console.info('Connected to Oracle replica instance: ', connectString)
           connection.callTimeout = config?.callTimeout ?? 0
           // Add any SESSION ALTER or connection tagging logic here.
-          config?.sessionCallback?.(connection, requestedTag).then(() => cb()).catch(cb) ?? cb()
+          config?.sessionCallback?.(connection, requestedTag).then(() => { cb() }).catch(cb) ?? cb()
         }
       })
     }
@@ -686,7 +687,7 @@ export default class Db extends Queryable {
   /** Function that calls Db.connect() to ensure we're able to make a connection before proceeding. */
   async wait () {
     if (typeof this.connectpromise === 'undefined') this.connectpromise = this.connect()
-    return await this.connectpromise
+    await this.connectpromise
   }
 
   /** Overloaded function - saving review for documentation later. */
@@ -698,7 +699,7 @@ export default class Db extends Queryable {
       const conn = await this.getConnection(options?.mainServer)
       if (stream.destroyed) await conn.close()
       else {
-        stream.on('close', () => { conn.close().catch(e => console.error(e)) })
+        stream.on('close', () => { conn.close().catch(e => { console.error(e) }) })
         this.feedStream(conn, stream, sql, binds, stacktrace, queryOptions)
       }
     }).catch(e => stream.emit('error', e))

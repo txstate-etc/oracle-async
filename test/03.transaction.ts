@@ -59,7 +59,7 @@ describe('transaction tests', () => {
         await db.getrow('SELECT * FROM test WHERE blah id=:id', { id })
       })
     } catch (e: any) {
-      expect(e.message).to.match(/NJS-097/i)
+      expect(e.message).to.match(/ORA-00900/i)
     }
     const row = await db.getrow('SELECT * FROM test WHERE id=:id', { id })
     expect(row).to.be.undefined

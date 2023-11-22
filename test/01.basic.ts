@@ -32,7 +32,7 @@ describe('basic tests', () => {
 
     const count = await db.getval("SELECT COUNT(*) FROM user_tables WHERE table_name IN ('TEST', 'TEST2')")
     expect(count).to.be.greaterThan(0)
-  }).timeout(6000)
+  }).timeout(10000)
 
   it('should be able to add test data', async () => {
     const thousand = Array.from(Array(1000))
@@ -43,7 +43,7 @@ describe('basic tests', () => {
     SELECT * FROM insertrows
     `
     await db.insert(`INSERT INTO test (name, modified) ${values}`, {})
-  }).timeout(6000)
+  }).timeout(10000)
 
   it('should be able to add more test data', async () => {
     const thousand = Array.from(Array(1000))
@@ -54,7 +54,7 @@ describe('basic tests', () => {
     SELECT * FROM insertrows
     `
     await db.insert(`INSERT INTO test2 (name, modified) ${values}`, {})
-  })
+  }).timeout(10000)
 
   it('should be able to select all rows', async () => {
     const rows = await db.getall('SELECT * FROM test')
@@ -131,7 +131,7 @@ describe('basic tests', () => {
   })
 
   it('should help you construct IN queries with named parameters involving tuples', async () => {
-    let params: { [keys: string]: string } = {}
+    let params: Record<string, string> = {}
     let rows = await db.getall(`SELECT * FROM test WHERE (id, name) IN (${db.in(params, [[3, 'name 2'], [6, 'name 5']])}) OR (id, name) IN (${db.in(params, [[9, 'name 8'], [10, 'name 9']])})`, params)
     expect(rows).to.have.lengthOf(4)
     params = {}

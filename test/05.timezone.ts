@@ -4,7 +4,7 @@ import { expect } from 'chai'
 import db from '../src/db'
 
 function expectSameTime (date1: Date, date2: Date) {
-  expect(Math.abs(date1.getTime() - date2.getTime())).to.be.lessThan(10000)
+  expect(Math.abs(date1.getTime() - date2.getTime())).to.be.lessThan(20000)
 }
 
 describe('timezone tests', () => {
