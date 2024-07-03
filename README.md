@@ -27,6 +27,7 @@ export const db = new Db({
   service: 'xe',
   user: 'test-api', // Also configurable via environment variable.
   password: 'somepassword', // Also configurable via environment variable.
+  externalAuth: false, // Also configurable via environment variable. Setting this to true will ignore the user and password even if defined
 
   // lowerCaseColumns determines if row objects will be converted to lowercase keys.
   lowerCaseColumns: true,
@@ -66,6 +67,7 @@ When working in docker, it's common to keep database configuration in environmen
   ORACLE_CONNECT_TIMEOUT= #(default 15)
   ORACLE_USER= # (default 'system')
   ORACLE_PASS= # (specify in override)
+  ORACLE_EXTERNAL_AUTH= #(any value other than the string 'true' is evaluated as false)
 
   # The following are provided for a singleton connection pool configuration of a single replica instance. Additional
   # replica configs can be passed through the oracle-async.PoolOptions config object passed to the Db constructor but for 
@@ -77,6 +79,7 @@ When working in docker, it's common to keep database configuration in environmen
   ORACLE_REPLICA_CONNECT_TIMEOUT= # (defaults to primary pool's timeout)
   ORACLE_REPLICA_USER= # (defaults to primary pool's user)
   ORACLE_REPLICA_PASS= # (specify in override - defaults to primary pool's password)
+  ORACLE_REPLICA_EXTERNAL_AUTH= #(any value other than the string 'true' is evaluated as false)
 
   # In addition to the above, the following will be applied to all pools if configured. This can be overridden for 
   # replicas if the Db constructor is passed a PoolOptions config that specifies otherwise for any replicas with

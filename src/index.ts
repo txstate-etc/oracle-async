@@ -464,6 +464,7 @@ export default class Db extends Queryable {
     const primaryUser = config?.user ?? process.env.ORACLE_USER ?? process.env.DB_USER ?? 'system'
     const primaryPass = config?.password ?? process.env.ORACLE_PASS ?? process.env.ORACLE_PASSWORD ?? process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'oracle'
     const primaryTimeout = `${config?.connectTimeout ?? process.env.ORACLE_CONNECT_TIMEOUT ?? 15}`
+    const primaryExternalAuth = config?.externalAuth ?? process.env.ORACLE_EXTERNAL_AUTH === 'true'
     const validityCheckSeconds = String(config?.expireTime ?? 2)
     const easyConnectString = `${primaryHost}:${primaryPort}/${primaryService}?connect_timeout=${primaryTimeout}&expire_time=${validityCheckSeconds}`
     const primaryConnectString = config?.connectString ?? process.env.ORACLE_CONNECT_STRING ?? easyConnectString
@@ -473,8 +474,7 @@ export default class Db extends Queryable {
       ...config,
       connectTimeout: parseInt(primaryTimeout, 10),
       expireTime: parseInt(validityCheckSeconds, 10),
-      user: primaryUser,
-      password: primaryPass,
+      ...(primaryExternalAuth ? { externalAuth: true } : { user: primaryUser, password: primaryPass }),
       poolMax,
       sessionCallback: (connection, requestedTag, cb) => {
         console.info('Connected to Oracle instance: ', primaryConnectString)
@@ -516,10 +516,10 @@ export default class Db extends Queryable {
       const connectString = process.env.ORACLE_REPLICA_CONNECT_STRING ?? easyConnectString
       const replicaUser = process.env.ORACLE_REPLICA_USER
       const replicaPasswd = process.env.ORACLE_REPLICA_PASS ?? process.env.ORACLE_REPLICA_PASSWORD
+      const replicaExternalAuth = process.env.ORACLE_REPLICA_EXTERNAL_AUTH === 'true'
       this.replicaAttributes.push({
         ...this.poolAttributes,
-        ...(replicaUser ? { user: replicaUser } : {}),
-        ...(replicaPasswd ? { password: replicaPasswd } : {}),
+        ...(replicaExternalAuth ? { externalAuth: true } : { ...(replicaUser ? { user: replicaUser } : {}), ...(replicaPasswd ? { password: replicaPasswd } : {}) }),
         connectString,
         sessionCallback: (connection, requestedTag, cb) => {
           console.info('Connected to Oracle replica instance: ', connectString)
