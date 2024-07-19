@@ -67,7 +67,7 @@ When working in docker, it's common to keep database configuration in environmen
   ORACLE_CONNECT_TIMEOUT= #(default 15)
   ORACLE_USER= # (default 'system')
   ORACLE_PASS= # (specify in override)
-  ORACLE_EXTERNAL_AUTH= #(any value other than the string 'true' is evaluated as false)
+  ORACLE_EXTERNAL_AUTH= #(default false, any value other than the string 'true' is evaluated as false)
 
   # The following are provided for a singleton connection pool configuration of a single replica instance. Additional
   # replica configs can be passed through the oracle-async.PoolOptions config object passed to the Db constructor but for 
@@ -79,7 +79,7 @@ When working in docker, it's common to keep database configuration in environmen
   ORACLE_REPLICA_CONNECT_TIMEOUT= # (defaults to primary pool's timeout)
   ORACLE_REPLICA_USER= # (defaults to primary pool's user)
   ORACLE_REPLICA_PASS= # (specify in override - defaults to primary pool's password)
-  ORACLE_REPLICA_EXTERNAL_AUTH= #(any value other than the string 'true' is evaluated as false)
+  ORACLE_REPLICA_EXTERNAL_AUTH= #(default false, any value other than the string 'true' is evaluated as false)
 
   # In addition to the above, the following will be applied to all pools if configured. This can be overridden for 
   # replicas if the Db constructor is passed a PoolOptions config that specifies otherwise for any replicas with
@@ -94,6 +94,10 @@ When working in docker, it's common to keep database configuration in environmen
   ORACLE_LOWERCASE= #('true')
   # If this is truthy, row objects will have lowercase keys instead of uppercase, just a quality
   # of life thing. You can also set this as a default at runtime with `db.setQueryOptions({ lowerCaseColumns: true })`
+
+  ORACLE_THICK_CLIENT= #(default false, any value other than the string 'true' is evaluated as false)
+  ORACLE_CLIENT_LIBDIR=
+  # Enables the use of the thick client. See below in Advanced Usage for more information.
 ```
 
 This way, connecting is very simple, and you don't have to worry about creating a singleton pool for the rest of your codebase to import:
@@ -315,3 +319,11 @@ for await (const row of stream) {
 const insertId = await db.insert<string>('INSERT INTO mytable (name) VALUES (:name)', { name: 'Mike' }, { insertId: 'id' })
 // insertId is a string (default is number)
 ```
+
+## Oracle Instant or Full Client "Thick" Mode
+
+By default the node-oracle module uses thin mode, which is a pure Javascript client. There are some features that are not supported however, and if you need those (external authentication with SSO wallets, for example) you will need an installed Oracle client. To automatically initialize the module to use the thick mode on startup, include the environment variable `ORACLE_THICK_CLIENT` with 'true' as the value. You may also optionally define `ORACLE_CLIENT_LIBDIR` with the full path to your client install, for platforms or installations that do not automatically detect it.
+
+Refer to https://node-oracledb.readthedocs.io/en/latest/user_guide/initialization.html#enabling-node-oracledb-thick-mode for more information about how to install and locate the client on various operating systems.
+
+This is a global and one way operation. You cannot have a mix of thin and thick mode connections, and you cannot change back to the thin mode after enabling the thick mode other than to remove the environment variable and restart your application.

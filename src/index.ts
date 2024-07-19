@@ -737,3 +737,13 @@ export default class Db extends Queryable {
     }
   }
 }
+
+let clientLoaded = false
+if (!clientLoaded) {
+  if (process.env.ORACLE_THICK_CLIENT === 'true') {
+    oracledb.initOracleClient({
+      libDir: process.env.ORACLE_CLIENT_LIBDIR
+    })
+  }
+  clientLoaded = true
+}
