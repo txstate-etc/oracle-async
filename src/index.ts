@@ -454,12 +454,10 @@ export default class Db extends Queryable {
     this.status = 'up'
     this.onStatus = config?.onStatus
     const threads = parseInt(process.env.UV_THREADPOOL_SIZE ?? '4')
-    const poolSizeString = process.env.ORACLE_POOL_SIZE ?? process.env.DB_POOL_SIZE ?? String(Math.ceil(threads - 1))
+    const poolSizeString = process.env.ORACLE_POOL_SIZE ?? process.env.DB_POOL_SIZE ?? String(Math.max(3, Math.ceil(threads - 3)))
+    const poolMax = Math.min(parseInt(poolSizeString), threads)
     /** Accepting the following variables from environment or config to build an Easy-Connect string to provide convenience of not needing to remember Easy-Connect syntax.
      * Note that other connectString formats can be used in conjunction with environment configurations that want to use other connection specifier formats such as Net Service Names or TNS. */
-    const poolMax = config?.poolMax ?? Math.min(parseInt(poolSizeString), threads)
-    // Make it a static size pool per the Real-World Performance Group's recommendation to avoid connection storms from causing connection denials or timeouts.
-    const poolMin = config?.poolMin ?? Math.max(poolMax, parseInt(process.env.ORACLE_POOL_MIN ?? process.env.DB_POOL_MIN ?? '1'), parseInt(poolSizeString))
     const primaryHost = config?.server ?? process.env.ORACLE_HOST ?? process.env.ORACLE_SERVER ?? process.env.DB_HOST ?? process.env.DB_SERVER ?? 'oracle'
     const primaryPort = config?.port ?? parseInt(process.env.ORACLE_PORT ?? process.env.DB_PORT ?? '1521')
     const primaryService = config?.service ?? process.env.ORACLE_SERVICE ?? process.env.DB_SERVICE ?? 'xe'
@@ -471,13 +469,12 @@ export default class Db extends Queryable {
     const easyConnectString = `${primaryHost}:${primaryPort}/${primaryService}?connect_timeout=${primaryTimeout}&expire_time=${validityCheckSeconds}`
     const primaryConnectString = config?.connectString ?? process.env.ORACLE_CONNECT_STRING ?? easyConnectString
     this.poolAttributes = {
-      queueMax: 1,
+      queueMax: 1000,
       connectString: primaryConnectString,
       ...config,
       connectTimeout: parseInt(primaryTimeout, 10),
       expireTime: parseInt(validityCheckSeconds, 10),
       ...(primaryExternalAuth ? { externalAuth: true } : { user: primaryUser, password: primaryPass }),
-      poolMin,
       poolMax,
       sessionCallback: (connection, requestedTag, cb) => {
         console.info('Connected to Oracle instance: ', primaryConnectString)
